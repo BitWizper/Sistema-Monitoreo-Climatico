@@ -1,11 +1,20 @@
+import { getWeatherByCity } from "./weatherService.js";
+import { resolveInitialWeather } from "./geoService.js";
+import { requestNotificationPermission, evaluateAlertRules } from "./notificationService.js";
+
 const cities = {
-  "ciudad de mexico": { name: "Ciudad de México", country: "MX", temperature: 24, feels: 26, condition: "Parcialmente nublado", humidity: 64, wind: 12, uv: "Moderado" },
-  madrid: { name: "Madrid", country: "ES", temperature: 18, feels: 18, condition: "Despejado", humidity: 42, wind: 9, uv: "Bajo" },
-  "buenos aires": { name: "Buenos Aires", country: "AR", temperature: 22, feels: 23, condition: "Algo de sol", humidity: 58, wind: 15, uv: "Moderado" },
-  bogota: { name: "Bogotá", country: "CO", temperature: 14, feels: 13, condition: "Lluvia ligera", humidity: 78, wind: 8, uv: "Bajo" },
-  barcelona: { name: "Barcelona", country: "ES", temperature: 21, feels: 21, condition: "Soleado", humidity: 51, wind: 11, uv: "Moderado" },
-  santiago: { name: "Santiago", country: "CL", temperature: 20, feels: 21, condition: "Despejado", humidity: 47, wind: 10, uv: "Alto" },
+  "ciudad de mexico": { name: "Ciudad de México", country: "MX", temperature: 24, feels: 26, condition: "Parcialmente nublado", humidity: 64, wind: 12, uv: "Moderado", rawCode: 2 },
+  madrid: { name: "Madrid", country: "ES", temperature: 18, feels: 18, condition: "Despejado", humidity: 42, wind: 9, uv: "Bajo", rawCode: 0 },
+  "buenos aires": { name: "Buenos Aires", country: "AR", temperature: 22, feels: 23, condition: "Algo de sol", humidity: 58, wind: 15, uv: "Moderado", rawCode: 1 },
+  bogota: { name: "Bogotá", country: "CO", temperature: 14, feels: 13, condition: "Lluvia ligera", humidity: 78, wind: 8, uv: "Bajo", rawCode: 61 },
+  barcelona: { name: "Barcelona", country: "ES", temperature: 21, feels: 21, condition: "Soleado", humidity: 51, wind: 11, uv: "Moderado", rawCode: 0 },
+  santiago: { name: "Santiago", country: "CL", temperature: 20, feels: 21, condition: "Despejado", humidity: 47, wind: 10, uv: "Alto", rawCode: 0 },
 };
+
+const activeAlertRules = [
+  { id: "init-1", city: "Ciudad de México", type: "rain", threshold: null },
+  { id: "init-2", city: "Ciudad de México", type: "temperature", threshold: 35 },
+];
 
 const searchForm = document.querySelector("#search-form");
 const searchInput = document.querySelector("#city-search");
@@ -18,9 +27,20 @@ const alertType = document.querySelector("#alert-type");
 const thresholdInput = document.querySelector("#alert-threshold");
 const alertFeedback = document.querySelector("#alert-feedback");
 const thresholdError = document.querySelector("#threshold-error");
+const notificationButton = document.querySelector(".notification-button");
+
 let currentCity = cities["ciudad de mexico"];
 let fahrenheit = false;
 let toastTimeout;
+
+function normalizeKey(text) {
+  return text.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function cacheCity(weatherObj) {
+  if (!weatherObj?.name) return;
+  cities[normalizeKey(weatherObj.name)] = weatherObj;
+}
 
 function toDisplayTemperature(celsius) {
   const temperature = fahrenheit ? Math.round((celsius * 9) / 5 + 32) : celsius;
@@ -29,6 +49,7 @@ function toDisplayTemperature(celsius) {
 
 function updateWeather(city) {
   currentCity = city;
+  cacheCity(city);
   document.querySelector("#current-city").innerHTML = `${city.name} <span class="country-tag">${city.country}</span>`;
   document.querySelector("#current-temperature").innerHTML = `${toDisplayTemperature(city.temperature).slice(0, -1)}<span>°</span>`;
   document.querySelector("#current-condition").textContent = city.condition;
@@ -49,15 +70,15 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("visible");
   window.clearTimeout(toastTimeout);
-  toastTimeout = window.setTimeout(() => toast.classList.remove("visible"), 2800);
+  toastTimeout = window.setTimeout(() => toast.classList.remove("visible"), 3200);
 }
 
 function findCity(query) {
-  const normalized = query.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return cities[normalized];
+  return cities[normalizeKey(query)];
 }
 
-searchForm.addEventListener("submit", (event) => {
+// Búsqueda manual: usa API REST real y cae a caché/fallback si no hay red o no existe
+searchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = searchInput.value.trim();
   if (!query) {
@@ -69,28 +90,37 @@ searchForm.addEventListener("submit", (event) => {
 
   searchStatus.textContent = "Buscando ciudad…";
   searchStatus.className = "search-status visible loading";
-  window.setTimeout(() => {
-    const city = findCity(query);
-    if (!city) {
-      searchStatus.textContent = `No encontramos “${query}”. Prueba Madrid, Bogotá o Santiago.`;
-      searchStatus.className = "search-status visible error";
-      return;
-    }
+
+  try {
+    const liveWeather = await getWeatherByCity(query);
     searchStatus.className = "search-status";
-    updateWeather(city);
-    showToast(`Pronóstico de ${city.name} actualizado (datos de demostración).`);
-  }, 450);
+    updateWeather(liveWeather);
+    showToast(`Pronóstico de ${liveWeather.name} actualizado.`);
+    await evaluateAlertRules(liveWeather, activeAlertRules);
+  } catch (error) {
+    const localMatch = findCity(query);
+    if (localMatch) {
+      searchStatus.className = "search-status";
+      updateWeather(localMatch);
+      showToast(`Mostrando datos guardados de ${localMatch.name}.`);
+    } else {
+      searchStatus.textContent = error.message || `No encontramos “${query}”.`;
+      searchStatus.className = "search-status visible error";
+    }
+  }
 });
 
 searchInput.addEventListener("input", () => {
   if (searchStatus.classList.contains("error")) searchStatus.className = "search-status";
 });
+
 searchForm.addEventListener("click", () => {
   if (window.matchMedia("(max-width: 420px)").matches) {
     searchForm.classList.add("expanded");
     searchInput.focus();
   }
 });
+
 document.addEventListener("click", (event) => {
   if (!searchForm.contains(event.target)) {
     searchStatus.className = "search-status";
@@ -148,7 +178,7 @@ function syncThresholdField() {
 }
 alertType.addEventListener("change", syncThresholdField);
 
-alertForm.addEventListener("submit", (event) => {
+alertForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   alertFeedback.textContent = "";
   thresholdError.textContent = "";
@@ -172,6 +202,17 @@ alertForm.addEventListener("submit", (event) => {
   document.querySelector(".active-alerts").append(alert);
   updateAlertCount();
   alertFeedback.textContent = "Alerta creada correctamente.";
+
+  await requestNotificationPermission();
+  const newRule = {
+    id: String(Date.now()),
+    city,
+    type: alertType.value,
+    threshold: alertType.value === "rain" ? null : threshold,
+  };
+  activeAlertRules.push(newRule);
+  await evaluateAlertRules(currentCity, [newRule]);
+
   alertForm.reset();
   syncThresholdField();
 });
@@ -227,4 +268,27 @@ document.querySelectorAll(".nav-link").forEach((link) => {
     document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active"));
     link.classList.add("active");
   });
+});
+
+if (notificationButton) {
+  notificationButton.addEventListener("click", async () => {
+    const status = await requestNotificationPermission();
+    showToast(status === "granted" ? "Notificaciones activadas." : `Estado de notificaciones: ${status}.`);
+  });
+}
+
+// Carga inicial con geolocalización y fallback automático
+window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const result = await resolveInitialWeather("Mérida");
+    updateWeather(result.weather);
+    if (result.source === "fallback") {
+      showToast(`${result.reason} Mostrando ${result.weather.name}.`);
+    } else {
+      showToast(`Ubicación detectada: ${result.weather.name}.`);
+    }
+    await evaluateAlertRules(result.weather, activeAlertRules);
+  } catch {
+    // Mantiene datos iniciales si no hay conexión al cargar
+  }
 });
