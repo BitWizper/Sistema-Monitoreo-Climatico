@@ -25,8 +25,6 @@ export async function showWeatherNotification(title, body) {
 
   const options = {
     body,
-    icon: "./icons/icon-192.png",
-    badge: "./icons/icon-192.png",
     tag: "climate-alert",
     renotify: true,
   };
@@ -58,10 +56,17 @@ export async function evaluateAlertRules(weather, rules = []) {
   const triggered = [];
 
   for (const rule of rules) {
+    const sameCity =
+      !rule.city ||
+      !weather.name ||
+      rule.city.trim().toLocaleLowerCase() === weather.name.trim().toLocaleLowerCase();
+    const sameCountry =
+      !rule.country ||
+      !weather.country ||
+      rule.country.trim().toLocaleLowerCase() === weather.country.trim().toLocaleLowerCase();
     if (
-      rule.city &&
-      weather.name &&
-      rule.city.trim().toLowerCase() !== weather.name.trim().toLowerCase()
+      !sameCity ||
+      !sameCountry
     ) {
       continue;
     }
@@ -82,10 +87,13 @@ export async function evaluateAlertRules(weather, rules = []) {
         detail = `${weather.name}: viento de ${weather.wind} km/h supera el umbral de ${limit} km/h.`;
       }
     } else if (rule.type === "rain") {
-      const rainCodes = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95];
+      const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
       const hasRain =
         rainCodes.includes(weather.rawCode) ||
-        /lluvia|llovizna|tormenta|chubasco/i.test(weather.condition);
+        /lluvia|llovizna|tormenta|chubasco/i.test(weather.condition) ||
+        weather.forecastDays?.some((day) =>
+          rainCodes.includes(day.code) || day.rainProb >= 50
+        );
 
       if (hasRain) {
         matched = true;
@@ -94,7 +102,12 @@ export async function evaluateAlertRules(weather, rules = []) {
     }
 
     if (matched) {
+      const lastTriggeredAt = Date.parse(rule.lastTriggeredAt || "");
+      if (Number.isFinite(lastTriggeredAt) && Date.now() - lastTriggeredAt < 6 * 60 * 60 * 1000) {
+        continue;
+      }
       await showWeatherNotification("Alerta de Monitoreo Climático", detail);
+      rule.lastTriggeredAt = new Date().toISOString();
       triggered.push({ ...rule, detail });
     }
   }

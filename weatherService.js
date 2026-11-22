@@ -25,6 +25,7 @@ export async function searchCityCoordinates(cityName) {
   return {
     name: place.name,
     country: place.country_code || "XX",
+    countryName: place.country || place.country_code || "Desconocido",
     lat: place.latitude,
     lon: place.longitude,
   };
@@ -73,7 +74,7 @@ function mapUvCategory(uvMax) {
 /**
  * Normaliza la respuesta cruda de Open-Meteo al modelo de datos de la aplicación.
  * @param {object} rawData Respuesta JSON de /v1/forecast.
- * @param {{name: string, country: string}} location
+ * @param {{name: string, country: string, countryName?: string}} location
  * @returns {object}
  */
 export function normalizeWeatherData(rawData, location) {
@@ -99,6 +100,7 @@ export function normalizeWeatherData(rawData, location) {
   return {
     name: location.name,
     country: location.country,
+    countryName: location.countryName || location.country,
     temperature: Math.round(current.temperature_2m),
     feels: Math.round(current.apparent_temperature),
     condition: mapWeatherCode(current.weather_code),
@@ -115,7 +117,7 @@ export function normalizeWeatherData(rawData, location) {
  * Obtiene y normaliza el clima actual y pronóstico a partir de latitud y longitud.
  * @param {number} lat
  * @param {number} lon
- * @param {{name?: string, country?: string}} meta
+ * @param {{name?: string, country?: string, countryName?: string}} meta
  * @returns {Promise<object>}
  */
 export async function getWeatherByCoords(lat, lon, meta = {}) {
@@ -136,28 +138,43 @@ export async function getWeatherByCoords(lat, lon, meta = {}) {
   let location = {
     name: meta.name || "Ubicación actual",
     country: meta.country || "LOCAL",
+    countryName: meta.countryName || "",
   };
 
   if (!meta.name) {
     try {
-      const revUrl = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&count=1&language=es&format=json`;
+      const revUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=es`;
       const revResponse = await fetch(revUrl);
-      if (revResponse.ok) {
-        const revData = await revResponse.json();
-        const place = revData.results?.[0];
-        if (place?.name) {
-          location = {
-            name: place.name,
-            country: place.country_code || "MX",
-          };
-        }
+      if (!revResponse.ok) {
+        throw new Error(`Error al resolver la ubicación (${revResponse.status}).`);
       }
+      const place = await revResponse.json();
+      const administrativeLocality = place.localityInfo?.administrative
+        ?.slice()
+        .reverse()
+        .find((area) => area.adminLevel >= 8)?.name;
+      const placeName = administrativeLocality || place.city || place.locality || place.principalSubdivision;
+      if (!placeName) {
+        throw new Error("La geocodificación no devolvió una localidad.");
+      }
+      location = {
+        name: placeName,
+        country: place.countryCode || "XX",
+        countryName: place.countryName || place.countryCode || "Desconocido",
+      };
     } catch {
-      // Mantiene el nombre por defecto si falla la geocodificación inversa
+      location = {
+        name: "Ubicación actual",
+        country: "GPS",
+        countryName: `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+      };
     }
   }
 
-  return normalizeWeatherData(rawData, location);
+  return {
+    ...normalizeWeatherData(rawData, location),
+    coordinates: { latitude: lat, longitude: lon },
+  };
 }
 
 /**
@@ -170,5 +187,6 @@ export async function getWeatherByCity(cityName) {
   return getWeatherByCoords(coords.lat, coords.lon, {
     name: coords.name,
     country: coords.country,
+    countryName: coords.countryName,
   });
 }

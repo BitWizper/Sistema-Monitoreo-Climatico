@@ -1,4 +1,4 @@
-import { getWeatherByCity } from "./weatherService.js";
+import { getWeatherByCity, getWeatherByCoords } from "./weatherService.js";
 import { resolveInitialWeather } from "./geoService.js";
 import { requestNotificationPermission, evaluateAlertRules } from "./notificationService.js";
 
@@ -11,10 +11,27 @@ const cities = {
   santiago: { name: "Santiago", country: "CL", temperature: 20, feels: 21, condition: "Despejado", humidity: 47, wind: 10, uv: "Alto", rawCode: 0 },
 };
 
-const activeAlertRules = [
-  { id: "init-1", city: "Ciudad de México", type: "rain", threshold: null },
-  { id: "init-2", city: "Ciudad de México", type: "temperature", threshold: 35 },
-];
+const ALERT_STORAGE_KEY = "clima.active-alerts";
+
+function loadAlertRules() {
+  try {
+    const savedRules = localStorage.getItem(ALERT_STORAGE_KEY);
+    if (!savedRules) return [];
+    const parsedRules = JSON.parse(savedRules);
+    if (!Array.isArray(parsedRules)) throw new Error("El formato de alertas guardadas no es válido.");
+    return parsedRules.filter((rule) =>
+      rule &&
+      typeof rule.id === "string" &&
+      typeof rule.city === "string" &&
+      ["temperature", "wind", "rain"].includes(rule.type)
+    );
+  } catch (error) {
+    console.error("No se pudieron cargar las alertas guardadas.", error);
+    return [];
+  }
+}
+
+const activeAlertRules = loadAlertRules();
 
 const searchForm = document.querySelector("#search-form");
 const searchInput = document.querySelector("#city-search");
@@ -30,6 +47,7 @@ const thresholdError = document.querySelector("#threshold-error");
 const notificationButton = document.querySelector(".notification-button");
 
 let currentCity = cities["ciudad de mexico"];
+let currentAlertLocation = null;
 let fahrenheit = false;
 let toastTimeout;
 
@@ -47,9 +65,98 @@ function toDisplayTemperature(celsius) {
   return `${temperature}°`;
 }
 
-function updateWeather(city) {
+function updateDateLabels() {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat("es-MX", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(now);
+  const time = new Intl.DateTimeFormat("es-MX", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(now);
+  document.querySelector("#header-date").textContent = date.toLocaleUpperCase("es-MX");
+  document.querySelector("#weather-date").textContent = `${date} · Actualizado a las ${time}`;
+}
+
+function getForecastIcon(code) {
+  if ([0].includes(code)) return { className: "sunny", symbol: "☀" };
+  if ([1, 2].includes(code)) return { className: "partly", symbol: "◐" };
+  if ([45, 48, 3].includes(code)) return { className: "cloudy", symbol: "☁" };
+  if ([95, 96, 99].includes(code)) return { className: "stormy", symbol: "ϟ" };
+  return { className: "rainy", symbol: "☂" };
+}
+
+function renderForecast(days = []) {
+  const forecastList = document.querySelector("#forecast-list");
+  forecastList.replaceChildren();
+
+  if (!days.length) {
+    const message = document.createElement("p");
+    message.className = "forecast-message";
+    message.textContent = "El pronóstico no está disponible en este momento.";
+    forecastList.append(message);
+    return;
+  }
+
+  days.forEach((day, index) => {
+    const date = new Date(`${day.date}T12:00:00`);
+    const weekday = index === 0
+      ? "Hoy"
+      : new Intl.DateTimeFormat("es-MX", { weekday: "short" })
+          .format(date)
+          .replace(".", "");
+    const shortDate = new Intl.DateTimeFormat("es-MX", {
+      day: "numeric",
+      month: "short",
+    }).format(date).replace(".", "");
+    const icon = getForecastIcon(day.code);
+    const article = document.createElement("article");
+    article.className = `forecast-day${index === 0 ? " today" : ""}`;
+
+    const dayName = document.createElement("div");
+    dayName.className = "forecast-day-name";
+    const weekdayLabel = document.createElement("strong");
+    weekdayLabel.textContent = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+    const dateLabel = document.createElement("span");
+    dateLabel.textContent = shortDate;
+    dayName.append(weekdayLabel, dateLabel);
+
+    const iconElement = document.createElement("span");
+    iconElement.className = `forecast-icon ${icon.className}`;
+    iconElement.setAttribute("aria-hidden", "true");
+    iconElement.textContent = icon.symbol;
+
+    const condition = document.createElement("div");
+    condition.className = "forecast-condition";
+    condition.textContent = day.condition;
+
+    const range = document.createElement("div");
+    range.className = "forecast-range";
+    const high = document.createElement("strong");
+    high.dataset.celsius = String(day.maxTemp);
+    high.textContent = toDisplayTemperature(day.maxTemp);
+    const low = document.createElement("span");
+    low.dataset.celsius = String(day.minTemp);
+    low.textContent = toDisplayTemperature(day.minTemp);
+    range.append(high, low);
+
+    const rain = document.createElement("div");
+    rain.className = `rain-chance${day.rainProb >= 50 ? " rain-high" : ""}`;
+    const rainIcon = document.createElement("span");
+    rainIcon.setAttribute("aria-hidden", "true");
+    rainIcon.textContent = "◉";
+    rain.append(rainIcon, document.createTextNode(` ${day.rainProb}%`));
+    article.append(dayName, iconElement, condition, range, rain);
+    forecastList.append(article);
+  });
+}
+
+function updateWeather(city, source = "api") {
   currentCity = city;
   cacheCity(city);
+  updateDateLabels();
   document.querySelector("#current-city").innerHTML = `${city.name} <span class="country-tag">${city.country}</span>`;
   document.querySelector("#current-temperature").innerHTML = `${toDisplayTemperature(city.temperature).slice(0, -1)}<span>°</span>`;
   document.querySelector("#current-condition").textContent = city.condition;
@@ -57,6 +164,12 @@ function updateWeather(city) {
   document.querySelector("#humidity").textContent = `${city.humidity}%`;
   document.querySelector("#wind").textContent = `${fahrenheit ? Math.round(city.wind * 0.621) : city.wind} ${fahrenheit ? "mph" : "km/h"}`;
   document.querySelector("#uv-index").textContent = city.uv;
+  const weatherStatus = document.querySelector("#weather-status");
+  weatherStatus.classList.toggle("offline", source === "cache");
+  weatherStatus.lastChild.textContent = source === "cache"
+    ? " Sin conexión · última consulta guardada"
+    : " Datos en tiempo real · Open-Meteo";
+  renderForecast(city.forecastDays);
   currentFavoriteButton.setAttribute("aria-label", `Agregar ${city.name} a favoritos`);
   const saved = Array.from(favoriteCities.querySelectorAll(".city-card")).some((card) => card.dataset.city === city.name);
   currentFavoriteButton.setAttribute("aria-pressed", String(saved));
@@ -71,6 +184,75 @@ function showToast(message) {
   toast.classList.add("visible");
   window.clearTimeout(toastTimeout);
   toastTimeout = window.setTimeout(() => toast.classList.remove("visible"), 3200);
+}
+
+function saveAlertRules() {
+  try {
+    localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(activeAlertRules));
+    return true;
+  } catch (error) {
+    console.error("No se pudieron guardar las alertas.", error);
+    showToast("No se pudieron guardar las alertas en este dispositivo.");
+    return false;
+  }
+}
+
+function getAlertLabel(rule) {
+  if (rule.type === "rain") return "Lluvia pronosticada";
+  if (rule.type === "wind") return `Viento > ${rule.threshold} km/h`;
+  return `Temperatura > ${rule.threshold}°C`;
+}
+
+function renderActiveAlerts() {
+  const alertList = document.querySelector("#active-alert-list");
+  alertList.replaceChildren();
+
+  activeAlertRules.forEach((rule) => {
+    const alert = document.createElement("div");
+    alert.className = "active-alert";
+    alert.dataset.alertId = rule.id;
+    const dot = document.createElement("span");
+    dot.className = "alert-status-dot";
+    const details = document.createElement("span");
+    const label = document.createElement("strong");
+    label.textContent = getAlertLabel(rule);
+    const location = document.createElement("small");
+    location.textContent = [rule.city, rule.countryName || rule.country].filter(Boolean).join(", ");
+    details.append(label, location);
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "remove-alert";
+    removeButton.setAttribute("aria-label", `Eliminar alerta ${getAlertLabel(rule)} de ${rule.city}`);
+    removeButton.textContent = "×";
+    alert.append(dot, details, removeButton);
+    alertList.append(alert);
+  });
+
+  document.querySelector("#empty-alerts").hidden = activeAlertRules.length > 0;
+  updateAlertCount();
+}
+
+function updateAlertLocation(weather, isFallback = false) {
+  const locationSelect = document.querySelector("#alert-city");
+  const option = document.createElement("option");
+  option.value = weather.name;
+  option.textContent = [weather.name, weather.countryName || weather.country]
+    .filter(Boolean)
+    .join(", ") + (isFallback ? " · ubicación predeterminada" : "");
+  option.defaultSelected = true;
+  option.selected = true;
+  locationSelect.replaceChildren(option);
+  locationSelect.disabled = !weather.coordinates;
+  document.querySelector("#alert-form .primary-button").disabled = !weather.coordinates;
+}
+
+async function checkAlertRules(weather, rules = activeAlertRules) {
+  const triggered = await evaluateAlertRules(weather, rules);
+  if (triggered.length) {
+    if (rules === activeAlertRules) saveAlertRules();
+    showToast(triggered.map((rule) => rule.detail).join(" "));
+  }
+  return triggered;
 }
 
 function findCity(query) {
@@ -96,12 +278,12 @@ searchForm.addEventListener("submit", async (event) => {
     searchStatus.className = "search-status";
     updateWeather(liveWeather);
     showToast(`Pronóstico de ${liveWeather.name} actualizado.`);
-    await evaluateAlertRules(liveWeather, activeAlertRules);
+    await checkAlertRules(liveWeather);
   } catch (error) {
     const localMatch = findCity(query);
     if (localMatch) {
       searchStatus.className = "search-status";
-      updateWeather(localMatch);
+      updateWeather(localMatch, "cache");
       showToast(`Mostrando datos guardados de ${localMatch.name}.`);
     } else {
       searchStatus.textContent = error.message || `No encontramos “${query}”.`;
@@ -182,6 +364,11 @@ alertForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   alertFeedback.textContent = "";
   thresholdError.textContent = "";
+  if (!currentAlertLocation?.coordinates) {
+    alertFeedback.textContent = "No se pudo determinar tu ubicación actual. Activa la ubicación e inténtalo de nuevo.";
+    return;
+  }
+
   const threshold = Number(thresholdInput.value);
   const isWind = alertType.value === "wind";
   const minimum = isWind ? 0 : -50;
@@ -194,24 +381,42 @@ alertForm.addEventListener("submit", async (event) => {
   }
   thresholdInput.removeAttribute("aria-invalid");
 
-  const city = document.querySelector("#alert-city").value;
-  const typeLabel = alertType.value === "rain" ? "Lluvia pronosticada" : alertType.value === "wind" ? `Viento > ${threshold} km/h` : `Temperatura > ${threshold}°C`;
-  const alert = document.createElement("div");
-  alert.className = "active-alert";
-  alert.innerHTML = `<span class="alert-status-dot"></span><span><strong>${typeLabel}</strong><small>${city}</small></span><button type="button" class="remove-alert" aria-label="Eliminar alerta ${typeLabel}">×</button>`;
-  document.querySelector(".active-alerts").append(alert);
-  updateAlertCount();
-  alertFeedback.textContent = "Alerta creada correctamente.";
-
-  await requestNotificationPermission();
   const newRule = {
     id: String(Date.now()),
-    city,
+    city: currentAlertLocation.name,
+    country: currentAlertLocation.country,
+    countryName: currentAlertLocation.countryName,
     type: alertType.value,
     threshold: alertType.value === "rain" ? null : threshold,
   };
+
+  if (activeAlertRules.some((rule) =>
+    rule.city === newRule.city &&
+    rule.country === newRule.country &&
+    rule.type === newRule.type &&
+    rule.threshold === newRule.threshold
+  )) {
+    alertFeedback.textContent = "Ya existe esa alerta para tu ubicación.";
+    return;
+  }
+
   activeAlertRules.push(newRule);
-  await evaluateAlertRules(currentCity, [newRule]);
+  if (!saveAlertRules()) {
+    activeAlertRules.pop();
+    return;
+  }
+
+  renderActiveAlerts();
+  const permission = await requestNotificationPermission();
+  const triggered = await checkAlertRules(currentAlertLocation, [newRule]);
+  if (permission === "granted") {
+    alertFeedback.textContent = triggered.length
+      ? "Alerta creada; la condición ya se cumple en tu ubicación."
+      : "Alerta creada. Se comprobará cada 15 min mientras la app esté abierta.";
+  } else {
+    alertFeedback.textContent = "Alerta guardada. Activa las notificaciones del navegador para recibir avisos.";
+  }
+  saveAlertRules();
 
   alertForm.reset();
   syncThresholdField();
@@ -220,14 +425,45 @@ alertForm.addEventListener("submit", async (event) => {
 document.querySelector(".active-alerts").addEventListener("click", (event) => {
   const button = event.target.closest(".remove-alert");
   if (!button) return;
-  button.closest(".active-alert").remove();
-  updateAlertCount();
+  const alert = button.closest(".active-alert");
+  const index = activeAlertRules.findIndex((rule) => rule.id === alert.dataset.alertId);
+  if (index < 0) return;
+  const [removedRule] = activeAlertRules.splice(index, 1);
+  if (!saveAlertRules()) {
+    activeAlertRules.splice(index, 0, removedRule);
+    return;
+  }
+  renderActiveAlerts();
 });
 
 function updateAlertCount() {
-  document.querySelector("#active-alert-count").textContent = document.querySelectorAll(".active-alert").length;
-  document.querySelector(".nav-count").textContent = document.querySelectorAll(".active-alert").length;
+  const count = activeAlertRules.length;
+  document.querySelector("#active-alert-count").textContent = count;
+  document.querySelector(".nav-count").textContent = count;
+  document.querySelector(".mobile-nav-count").textContent = count;
 }
+
+renderActiveAlerts();
+
+async function refreshCurrentLocationAlerts() {
+  const coordinates = currentAlertLocation?.coordinates;
+  if (!coordinates || !activeAlertRules.length) return;
+
+  try {
+    const weather = await getWeatherByCoords(coordinates.latitude, coordinates.longitude, {
+      name: currentAlertLocation.name,
+      country: currentAlertLocation.country,
+      countryName: currentAlertLocation.countryName,
+    });
+    currentAlertLocation = weather;
+    await checkAlertRules(weather);
+  } catch (error) {
+    console.error("No se pudieron actualizar las alertas de tu ubicación.", error);
+    alertFeedback.textContent = "No se pudo actualizar el clima; volveremos a intentarlo.";
+  }
+}
+
+window.setInterval(refreshCurrentLocationAlerts, 15 * 60 * 1000);
 
 function updateUnits() {
   document.querySelectorAll(".forecast-range").forEach((range) => {
@@ -263,10 +499,11 @@ document.querySelector("#forecast-unit").addEventListener("click", () => {
   updateUnits();
 });
 
-document.querySelectorAll(".nav-link").forEach((link) => {
+document.querySelectorAll(".nav-link, .mobile-nav-link").forEach((link) => {
   link.addEventListener("click", () => {
-    document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active"));
-    link.classList.add("active");
+    document.querySelectorAll(".nav-link, .mobile-nav-link").forEach((item) => {
+      item.classList.toggle("active", item.getAttribute("href") === link.getAttribute("href"));
+    });
   });
 });
 
@@ -281,14 +518,21 @@ if (notificationButton) {
 window.addEventListener("DOMContentLoaded", async () => {
   try {
     const result = await resolveInitialWeather("Mérida");
+    currentAlertLocation = result.weather;
+    updateAlertLocation(result.weather, result.source === "fallback");
     updateWeather(result.weather);
     if (result.source === "fallback") {
       showToast(`${result.reason} Mostrando ${result.weather.name}.`);
     } else {
       showToast(`Ubicación detectada: ${result.weather.name}.`);
     }
-    await evaluateAlertRules(result.weather, activeAlertRules);
-  } catch {
-    // Mantiene datos iniciales si no hay conexión al cargar
+    await checkAlertRules(result.weather);
+  } catch (error) {
+    console.error("No se pudo cargar el clima de tu ubicación.", error);
+    const weatherStatus = document.querySelector("#weather-status");
+    weatherStatus.lastChild.textContent = " No se pudo conectar · intenta buscar una ciudad";
+    weatherStatus.classList.add("offline");
+    renderForecast();
+    alertFeedback.textContent = "No se pudo detectar tu ubicación. Las alertas estarán disponibles cuando se conecte el clima.";
   }
 });

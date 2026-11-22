@@ -48,7 +48,7 @@
           <a class="nav-link" href="#alertas">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12a2 2 0 0 0 4 0" /></svg>
             <span>Alertas</span>
-            <span class="nav-count">2</span>
+            <span class="nav-count">0</span>
           </a>
         </nav>
 
@@ -75,7 +75,7 @@
             <span>clima<span class="brand-dot">.</span></span>
           </div>
           <div class="welcome">
-            <p class="eyebrow">DOMINGO, 22 DE NOVIEMBRE</p>
+            <p class="eyebrow" id="header-date"></p>
             <h1>Buenos días, Mily <span aria-hidden="true">✦</span></h1>
           </div>
           <div class="topbar-actions">
@@ -102,7 +102,7 @@
                 <div>
                   <p class="card-eyebrow"><span class="location-pin" aria-hidden="true">⌖</span> CLIMA ACTUAL</p>
                   <h2 id="current-city">Ciudad de México <span class="country-tag">MX</span></h2>
-                  <p class="weather-date">Domingo, 22 de noviembre · 10:30</p>
+                  <p class="weather-date" id="weather-date">Buscando el pronóstico local…</p>
                 </div>
                 <button id="favorite-current" class="favorite-toggle" type="button" aria-pressed="false" aria-label="Agregar Ciudad de México a favoritos">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" /></svg>
@@ -130,7 +130,7 @@
                 <div class="stat-divider"></div>
                 <div class="weather-stat"><span class="stat-icon uv-icon" aria-hidden="true">☼</span><span><small>Índice UV</small><strong id="uv-index">Moderado</strong></span></div>
               </div>
-              <p class="demo-label"><span></span> Datos de demostración</p>
+              <p class="demo-label weather-status" id="weather-status" role="status" aria-live="polite"><span></span> Conectando con Open-Meteo</p>
             </section>
 
             <section id="pronostico" class="forecast-section" aria-labelledby="forecast-title">
@@ -138,27 +138,8 @@
                 <div><p class="section-kicker">PLANIFICA TU SEMANA</p><h2 id="forecast-title">Pronóstico de 5 días</h2></div>
                 <button id="forecast-unit" class="text-button" type="button">Ver en °F <span aria-hidden="true">→</span></button>
               </div>
-              <div class="forecast-list" id="forecast-list">
-                <article class="forecast-day today">
-                  <div class="forecast-day-name"><strong>Hoy</strong><span>22 nov</span></div><span class="forecast-icon partly" aria-hidden="true">☀</span>
-                  <div class="forecast-condition">Parcialmente<br />nublado</div><div class="forecast-range"><strong>24°</strong><span>17°</span></div><div class="rain-chance"><span>◉</span> 10%</div>
-                </article>
-                <article class="forecast-day">
-                  <div class="forecast-day-name"><strong>Lun</strong><span>23 nov</span></div><span class="forecast-icon sunny" aria-hidden="true">☀</span>
-                  <div class="forecast-condition">Soleado</div><div class="forecast-range"><strong>26°</strong><span>18°</span></div><div class="rain-chance"><span>◉</span> 5%</div>
-                </article>
-                <article class="forecast-day">
-                  <div class="forecast-day-name"><strong>Mar</strong><span>24 nov</span></div><span class="forecast-icon cloudy" aria-hidden="true">☁</span>
-                  <div class="forecast-condition">Nublado</div><div class="forecast-range"><strong>22°</strong><span>16°</span></div><div class="rain-chance"><span>◉</span> 20%</div>
-                </article>
-                <article class="forecast-day">
-                  <div class="forecast-day-name"><strong>Mié</strong><span>25 nov</span></div><span class="forecast-icon rainy" aria-hidden="true">☂</span>
-                  <div class="forecast-condition">Lluvia ligera</div><div class="forecast-range"><strong>19°</strong><span>14°</span></div><div class="rain-chance rain-high"><span>◉</span> 65%</div>
-                </article>
-                <article class="forecast-day">
-                  <div class="forecast-day-name"><strong>Jue</strong><span>26 nov</span></div><span class="forecast-icon partly" aria-hidden="true">☀</span>
-                  <div class="forecast-condition">Algo de sol</div><div class="forecast-range"><strong>23°</strong><span>16°</span></div><div class="rain-chance"><span>◉</span> 15%</div>
-                </article>
+              <div class="forecast-list" id="forecast-list" aria-live="polite">
+                <p class="forecast-message">Cargando pronóstico…</p>
               </div>
             </section>
 
@@ -196,19 +177,19 @@
               <div class="section-heading compact-heading"><div><p class="section-kicker">MANTENTE AL TANTO</p><h2 id="alerts-title">Alertas del clima</h2></div><span class="alert-bell" aria-hidden="true">♧</span></div>
               <p class="card-description">Recibe avisos cuando el clima cambie en tus ciudades.</p>
               <form id="alert-form" class="alert-form">
-                <label for="alert-city">Ciudad</label>
-                <div class="select-wrap"><select id="alert-city" name="city" required><option value="Ciudad de México">Ciudad de México</option><option value="Madrid">Madrid</option><option value="Buenos Aires">Buenos Aires</option><option value="Bogotá">Bogotá</option></select><span aria-hidden="true">⌄</span></div>
+                <label for="alert-city">Ubicación actual</label>
+                <div class="select-wrap"><select id="alert-city" name="city" required disabled><option value="">Detectando ubicación…</option></select><span aria-hidden="true">⌄</span></div>
                 <label for="alert-type">Avisarme cuando</label>
                 <div class="select-wrap"><select id="alert-type" name="type" required><option value="temperature">La temperatura supere</option><option value="rain">Se pronostique lluvia</option><option value="wind">El viento supere</option></select><span aria-hidden="true">⌄</span></div>
                 <div class="threshold-row"><label class="sr-only" for="alert-threshold">Umbral de alerta</label><input id="alert-threshold" name="threshold" type="number" value="30" min="-50" max="60" required /><span id="threshold-unit">°C</span><span id="threshold-hint" class="threshold-hint">Umbral de temperatura</span></div>
                 <div id="threshold-error" class="field-error" aria-live="polite"></div>
-                <button class="primary-button" type="submit"><span aria-hidden="true">＋</span> Crear alerta</button>
+                <button class="primary-button" type="submit" disabled><span aria-hidden="true">＋</span> Crear alerta</button>
                 <p id="alert-feedback" class="form-feedback" role="status" aria-live="polite"></p>
               </form>
               <div class="active-alerts">
-                <div class="active-alerts-heading"><strong>Alertas activas</strong><span id="active-alert-count">2</span></div>
-                <div class="active-alert"><span class="alert-status-dot"></span><span><strong>Lluvia intensa</strong><small>Ciudad de México</small></span><button type="button" class="remove-alert" aria-label="Eliminar alerta de lluvia intensa">×</button></div>
-                <div class="active-alert"><span class="alert-status-dot"></span><span><strong>Temperatura &gt; 35°C</strong><small>Ciudad de México</small></span><button type="button" class="remove-alert" aria-label="Eliminar alerta de temperatura">×</button></div>
+                <div class="active-alerts-heading"><strong>Alertas activas</strong><span id="active-alert-count">0</span></div>
+                <div id="active-alert-list"></div>
+                <p id="empty-alerts" class="empty-alerts">Todavía no tienes alertas para esta ubicación.</p>
               </div>
             </section>
 
@@ -219,8 +200,27 @@
             </section>
           </aside>
         </div>
-        <footer class="page-footer"><span>Clima<span class="brand-dot">.</span> <span>Información meteorológica de demostración</span></span><button id="unit-toggle" type="button" aria-label="Cambiar unidades">°C <span>/</span> °F</button></footer>
+        <footer class="page-footer"><span>Clima<span class="brand-dot">.</span> <span>Pronóstico de Open-Meteo</span></span><button id="unit-toggle" type="button" aria-label="Cambiar unidades">°C <span>/</span> °F</button></footer>
       </main>
+      <nav class="mobile-nav" aria-label="Navegación principal">
+        <a class="mobile-nav-link active" href="#inicio" aria-label="Resumen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.8 12 3l9 7.8v9.1a1.1 1.1 0 0 1-1.1 1.1H4.1A1.1 1.1 0 0 1 3 19.9v-9.1Z" /><path d="M9 21v-7h6v7" /></svg>
+          <span>Inicio</span>
+        </a>
+        <a class="mobile-nav-link" href="#pronostico" aria-label="Pronóstico">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h17M8 15l4-4 3 2 5-6" /><path d="M16 7h4v4" /></svg>
+          <span>Pronóstico</span>
+        </a>
+        <a class="mobile-nav-link" href="#favoritos" aria-label="Favoritos">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9L12 3Z" /></svg>
+          <span>Favoritos</span>
+        </a>
+        <a class="mobile-nav-link" href="#alertas" aria-label="Alertas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12a2 2 0 0 0 4 0" /></svg>
+          <span>Alertas</span>
+          <span class="mobile-nav-count">0</span>
+        </a>
+      </nav>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
