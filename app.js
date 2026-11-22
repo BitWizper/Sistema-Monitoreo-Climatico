@@ -11,6 +11,17 @@ const cities = {
   santiago: { name: "Santiago", country: "CL", temperature: 20, feels: 21, condition: "Despejado", humidity: 47, wind: 10, uv: "Alto", rawCode: 0 },
 };
 
+const nearbyPeninsulaCities = [
+  { name: "Mérida", country: "MX", countryName: "México", region: "Yucatán", latitude: 20.967, longitude: -89.62318 },
+  { name: "Valladolid", country: "MX", countryName: "México", region: "Yucatán", latitude: 20.68812, longitude: -88.19936 },
+  { name: "Progreso", country: "MX", countryName: "México", region: "Yucatán", latitude: 21.2833, longitude: -89.6667 },
+  { name: "Campeche", country: "MX", countryName: "México", region: "Campeche", latitude: 19.84073, longitude: -90.51676 },
+  { name: "Cancún", country: "MX", countryName: "México", region: "Quintana Roo", latitude: 21.17429, longitude: -86.84656 },
+  { name: "Playa del Carmen", country: "MX", countryName: "México", region: "Quintana Roo", latitude: 20.6274, longitude: -87.07987 },
+  { name: "Tulum", country: "MX", countryName: "México", region: "Quintana Roo", latitude: 20.21173, longitude: -87.46325 },
+  { name: "Chetumal", country: "MX", countryName: "México", region: "Quintana Roo", latitude: 18.51957, longitude: -88.30397 },
+];
+
 const ALERT_STORAGE_KEY = "clima.active-alerts";
 
 function loadAlertRules() {
@@ -48,6 +59,7 @@ const notificationButton = document.querySelector(".notification-button");
 
 let currentCity = cities["ciudad de mexico"];
 let currentAlertLocation = null;
+let availableAlertLocations = [];
 let fahrenheit = false;
 let toastTimeout;
 
@@ -217,7 +229,7 @@ function renderActiveAlerts() {
     const label = document.createElement("strong");
     label.textContent = getAlertLabel(rule);
     const location = document.createElement("small");
-    location.textContent = [rule.city, rule.countryName || rule.country].filter(Boolean).join(", ");
+    location.textContent = [rule.city, rule.region, rule.countryName || rule.country].filter(Boolean).join(", ");
     details.append(label, location);
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -232,18 +244,97 @@ function renderActiveAlerts() {
   updateAlertCount();
 }
 
+function distanceBetweenCoordinates(first, second) {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const latitudeDifference = radians(second.latitude - first.latitude);
+  const longitudeDifference = radians(second.longitude - first.longitude);
+  const haversine =
+    Math.sin(latitudeDifference / 2) ** 2 +
+    Math.cos(radians(first.latitude)) *
+      Math.cos(radians(second.latitude)) *
+      Math.sin(longitudeDifference / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function getAlertLocationId(location) {
+  return `${normalizeKey(location.name)}-${location.country}-${location.coordinates.latitude.toFixed(3)}-${location.coordinates.longitude.toFixed(3)}`;
+}
+
+function getNearbyAlertLocations(weather) {
+  if (weather.country !== "MX" || !weather.coordinates) return [];
+  const region = normalizeKey(weather.region || "");
+  if (!["yucatan", "estado de yucatan", "campeche", "estado de campeche", "quintana roo", "estado de quintana roo"].includes(region)) {
+    return [];
+  }
+
+  return nearbyPeninsulaCities
+    .map((place) => {
+      const coordinates = { latitude: place.latitude, longitude: place.longitude };
+      return {
+        ...place,
+        coordinates,
+        distanceKm: distanceBetweenCoordinates(weather.coordinates, coordinates),
+      };
+    })
+    .filter((place) =>
+      place.distanceKm <= 450 &&
+      normalizeKey(place.name) !== normalizeKey(weather.name)
+    )
+    .sort((first, second) => first.distanceKm - second.distanceKm);
+}
+
+function migrateAlertLocations() {
+  let changed = false;
+  activeAlertRules.forEach((rule) => {
+    if (rule.coordinates) return;
+    const location = availableAlertLocations.find((candidate) =>
+      normalizeKey(candidate.name) === normalizeKey(rule.city) &&
+      (!rule.country || candidate.country === rule.country)
+    );
+    if (!location) return;
+    rule.coordinates = location.coordinates;
+    rule.countryName = location.countryName;
+    rule.region = location.region;
+    changed = true;
+  });
+  if (changed) saveAlertRules();
+}
+
 function updateAlertLocation(weather, isFallback = false) {
   const locationSelect = document.querySelector("#alert-city");
-  const option = document.createElement("option");
-  option.value = weather.name;
-  option.textContent = [weather.name, weather.countryName || weather.country]
-    .filter(Boolean)
-    .join(", ") + (isFallback ? " · ubicación predeterminada" : "");
-  option.defaultSelected = true;
-  option.selected = true;
-  locationSelect.replaceChildren(option);
+  locationSelect.replaceChildren();
+  const currentLocation = {
+    id: "",
+    name: weather.name,
+    country: weather.country,
+    countryName: weather.countryName,
+    region: weather.region,
+    coordinates: weather.coordinates,
+    distanceKm: 0,
+    isCurrent: true,
+  };
+  availableAlertLocations = [
+    currentLocation,
+    ...getNearbyAlertLocations(weather),
+  ];
+  availableAlertLocations.forEach((location) => {
+    location.id = getAlertLocationId(location);
+    const option = document.createElement("option");
+    option.value = location.id;
+    const place = [location.name, location.region, location.countryName || location.country]
+      .filter(Boolean)
+      .join(", ");
+    option.textContent = location.isCurrent
+      ? `${place} · ubicación actual${isFallback ? " (predeterminada)" : ""}`
+      : `${place} · ${Math.round(location.distanceKm)} km`;
+    option.defaultSelected = location.isCurrent;
+    locationSelect.append(option);
+  });
+  locationSelect.value = currentLocation.id;
   locationSelect.disabled = !weather.coordinates;
   document.querySelector("#alert-form .primary-button").disabled = !weather.coordinates;
+  migrateAlertLocations();
+  renderActiveAlerts();
 }
 
 async function checkAlertRules(weather, rules = activeAlertRules) {
@@ -364,8 +455,11 @@ alertForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   alertFeedback.textContent = "";
   thresholdError.textContent = "";
-  if (!currentAlertLocation?.coordinates) {
-    alertFeedback.textContent = "No se pudo determinar tu ubicación actual. Activa la ubicación e inténtalo de nuevo.";
+  const selectedLocation = availableAlertLocations.find(
+    (location) => location.id === document.querySelector("#alert-city").value
+  );
+  if (!selectedLocation?.coordinates) {
+    alertFeedback.textContent = "No se encontró el pronóstico para esa ubicación.";
     return;
   }
 
@@ -383,9 +477,11 @@ alertForm.addEventListener("submit", async (event) => {
 
   const newRule = {
     id: String(Date.now()),
-    city: currentAlertLocation.name,
-    country: currentAlertLocation.country,
-    countryName: currentAlertLocation.countryName,
+    city: selectedLocation.name,
+    country: selectedLocation.country,
+    countryName: selectedLocation.countryName,
+    region: selectedLocation.region,
+    coordinates: selectedLocation.coordinates,
     type: alertType.value,
     threshold: alertType.value === "rain" ? null : threshold,
   };
@@ -393,33 +489,59 @@ alertForm.addEventListener("submit", async (event) => {
   if (activeAlertRules.some((rule) =>
     rule.city === newRule.city &&
     rule.country === newRule.country &&
+    rule.coordinates?.latitude === newRule.coordinates.latitude &&
+    rule.coordinates?.longitude === newRule.coordinates.longitude &&
     rule.type === newRule.type &&
     rule.threshold === newRule.threshold
   )) {
-    alertFeedback.textContent = "Ya existe esa alerta para tu ubicación.";
+    alertFeedback.textContent = "Ya existe esa alerta para esta ubicación.";
     return;
   }
 
-  activeAlertRules.push(newRule);
-  if (!saveAlertRules()) {
-    activeAlertRules.pop();
-    return;
-  }
+  const submitButton = document.querySelector("#alert-form .primary-button");
+  submitButton.disabled = true;
+  const permissionPromise = requestNotificationPermission().catch((error) => {
+    console.error("No se pudo solicitar permiso para las notificaciones.", error);
+    return "default";
+  });
 
-  renderActiveAlerts();
-  const permission = await requestNotificationPermission();
-  const triggered = await checkAlertRules(currentAlertLocation, [newRule]);
-  if (permission === "granted") {
-    alertFeedback.textContent = triggered.length
-      ? "Alerta creada; la condición ya se cumple en tu ubicación."
-      : "Alerta creada. Se comprobará cada 15 min mientras la app esté abierta.";
-  } else {
-    alertFeedback.textContent = "Alerta guardada. Activa las notificaciones del navegador para recibir avisos.";
-  }
-  saveAlertRules();
+  try {
+    const liveWeather = await getWeatherByCoords(
+      selectedLocation.coordinates.latitude,
+      selectedLocation.coordinates.longitude,
+      {
+        name: selectedLocation.name,
+        country: selectedLocation.country,
+        countryName: selectedLocation.countryName,
+        region: selectedLocation.region,
+      }
+    );
+    const permission = await permissionPromise;
+    activeAlertRules.push(newRule);
+    if (!saveAlertRules()) {
+      activeAlertRules.pop();
+      return;
+    }
 
-  alertForm.reset();
-  syncThresholdField();
+    renderActiveAlerts();
+    const triggered = await checkAlertRules(liveWeather, [newRule]);
+    if (triggered.length) {
+      alertFeedback.textContent = `Alerta creada: ${triggered[0].detail}`;
+    } else if (permission === "granted") {
+      alertFeedback.textContent = `Alerta creada para ${selectedLocation.name}. Se revisará cada 15 min mientras la app esté abierta.`;
+    } else {
+      alertFeedback.textContent = `Alerta guardada para ${selectedLocation.name}. Activa las notificaciones del navegador para recibir avisos.`;
+    }
+    saveAlertRules();
+    alertForm.reset();
+    document.querySelector("#alert-city").value = selectedLocation.id;
+    syncThresholdField();
+  } catch (error) {
+    console.error(`No se pudo consultar el clima de ${selectedLocation.name}.`, error);
+    alertFeedback.textContent = `No se pudo consultar el clima de ${selectedLocation.name}; la alerta no se creó.`;
+  } finally {
+    submitButton.disabled = !currentAlertLocation?.coordinates;
+  }
 });
 
 document.querySelector(".active-alerts").addEventListener("click", (event) => {
@@ -446,20 +568,48 @@ function updateAlertCount() {
 renderActiveAlerts();
 
 async function refreshCurrentLocationAlerts() {
-  const coordinates = currentAlertLocation?.coordinates;
-  if (!coordinates || !activeAlertRules.length) return;
+  if (!currentAlertLocation || !activeAlertRules.length) return;
+  const locations = new Map();
+  activeAlertRules.forEach((rule) => {
+    if (!rule.coordinates) return;
+    const key = `${rule.coordinates.latitude},${rule.coordinates.longitude}`;
+    if (!locations.has(key)) locations.set(key, { rule, rules: [] });
+    locations.get(key).rules.push(rule);
+  });
 
-  try {
-    const weather = await getWeatherByCoords(coordinates.latitude, coordinates.longitude, {
-      name: currentAlertLocation.name,
-      country: currentAlertLocation.country,
-      countryName: currentAlertLocation.countryName,
-    });
-    currentAlertLocation = weather;
-    await checkAlertRules(weather);
-  } catch (error) {
-    console.error("No se pudieron actualizar las alertas de tu ubicación.", error);
-    alertFeedback.textContent = "No se pudo actualizar el clima; volveremos a intentarlo.";
+  const triggeredAlerts = [];
+  const failedLocations = [];
+  for (const { rule, rules } of locations.values()) {
+    try {
+      const weather = await getWeatherByCoords(
+        rule.coordinates.latitude,
+        rule.coordinates.longitude,
+        {
+          name: rule.city,
+          country: rule.country,
+          countryName: rule.countryName,
+          region: rule.region,
+        }
+      );
+      if (
+        weather.coordinates.latitude === currentAlertLocation.coordinates?.latitude &&
+        weather.coordinates.longitude === currentAlertLocation.coordinates?.longitude
+      ) {
+        currentAlertLocation = weather;
+      }
+      triggeredAlerts.push(...await evaluateAlertRules(weather, rules));
+    } catch (error) {
+      console.error(`No se pudo actualizar el clima de ${rule.city}.`, error);
+      failedLocations.push(rule.city);
+    }
+  }
+
+  if (triggeredAlerts.length) {
+    saveAlertRules();
+    showToast(triggeredAlerts.map((rule) => rule.detail).join(" "));
+  }
+  if (failedLocations.length) {
+    alertFeedback.textContent = `No se pudo actualizar el clima de ${failedLocations.join(", ")}; volveremos a intentarlo.`;
   }
 }
 
@@ -526,7 +676,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     } else {
       showToast(`Ubicación detectada: ${result.weather.name}.`);
     }
-    await checkAlertRules(result.weather);
+    await refreshCurrentLocationAlerts();
   } catch (error) {
     console.error("No se pudo cargar el clima de tu ubicación.", error);
     const weatherStatus = document.querySelector("#weather-status");

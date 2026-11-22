@@ -177,8 +177,8 @@
               <div class="section-heading compact-heading"><div><p class="section-kicker">MANTENTE AL TANTO</p><h2 id="alerts-title">Alertas del clima</h2></div><span class="alert-bell" aria-hidden="true">♧</span></div>
               <p class="card-description">Recibe avisos cuando el clima cambie en tus ciudades.</p>
               <form id="alert-form" class="alert-form">
-                <label for="alert-city">Ubicación actual</label>
-                <div class="select-wrap"><select id="alert-city" name="city" required disabled><option value="">Detectando ubicación…</option></select><span aria-hidden="true">⌄</span></div>
+                <label for="alert-city">Lugar de la alerta</label>
+                <div class="select-wrap"><select id="alert-city" name="city" required disabled><option value="">Detectando ubicación cercana…</option></select><span aria-hidden="true">⌄</span></div>
                 <label for="alert-type">Avisarme cuando</label>
                 <div class="select-wrap"><select id="alert-type" name="type" required><option value="temperature">La temperatura supere</option><option value="rain">Se pronostique lluvia</option><option value="wind">El viento supere</option></select><span aria-hidden="true">⌄</span></div>
                 <div class="threshold-row"><label class="sr-only" for="alert-threshold">Umbral de alerta</label><input id="alert-threshold" name="threshold" type="number" value="30" min="-50" max="60" required /><span id="threshold-unit">°C</span><span id="threshold-hint" class="threshold-hint">Umbral de temperatura</span></div>

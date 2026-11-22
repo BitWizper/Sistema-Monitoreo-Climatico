@@ -26,6 +26,7 @@ export async function searchCityCoordinates(cityName) {
     name: place.name,
     country: place.country_code || "XX",
     countryName: place.country || place.country_code || "Desconocido",
+    region: place.admin1 || "",
     lat: place.latitude,
     lon: place.longitude,
   };
@@ -74,7 +75,7 @@ function mapUvCategory(uvMax) {
 /**
  * Normaliza la respuesta cruda de Open-Meteo al modelo de datos de la aplicación.
  * @param {object} rawData Respuesta JSON de /v1/forecast.
- * @param {{name: string, country: string, countryName?: string}} location
+ * @param {{name: string, country: string, countryName?: string, region?: string}} location
  * @returns {object}
  */
 export function normalizeWeatherData(rawData, location) {
@@ -101,6 +102,7 @@ export function normalizeWeatherData(rawData, location) {
     name: location.name,
     country: location.country,
     countryName: location.countryName || location.country,
+    region: location.region || "",
     temperature: Math.round(current.temperature_2m),
     feels: Math.round(current.apparent_temperature),
     condition: mapWeatherCode(current.weather_code),
@@ -117,7 +119,7 @@ export function normalizeWeatherData(rawData, location) {
  * Obtiene y normaliza el clima actual y pronóstico a partir de latitud y longitud.
  * @param {number} lat
  * @param {number} lon
- * @param {{name?: string, country?: string, countryName?: string}} meta
+ * @param {{name?: string, country?: string, countryName?: string, region?: string}} meta
  * @returns {Promise<object>}
  */
 export async function getWeatherByCoords(lat, lon, meta = {}) {
@@ -139,6 +141,7 @@ export async function getWeatherByCoords(lat, lon, meta = {}) {
     name: meta.name || "Ubicación actual",
     country: meta.country || "LOCAL",
     countryName: meta.countryName || "",
+    region: meta.region || "",
   };
 
   if (!meta.name) {
@@ -161,6 +164,7 @@ export async function getWeatherByCoords(lat, lon, meta = {}) {
         name: placeName,
         country: place.countryCode || "XX",
         countryName: place.countryName || place.countryCode || "Desconocido",
+        region: place.principalSubdivision || "",
       };
     } catch {
       location = {
@@ -188,5 +192,6 @@ export async function getWeatherByCity(cityName) {
     name: coords.name,
     country: coords.country,
     countryName: coords.countryName,
+    region: coords.region,
   });
 }
