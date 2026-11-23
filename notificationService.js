@@ -36,8 +36,8 @@ export async function showWeatherNotification(title, body) {
         await reg.showNotification(title, options);
         return true;
       }
-    } catch {
-      // Continúa con new Notification como respaldo
+    } catch (error) {
+      console.error("No se pudo usar el Service Worker para notificar; se probará Notification API.", error);
     }
   }
 
@@ -53,9 +53,31 @@ export async function showWeatherNotification(title, body) {
  * @returns {Promise<Array<object>>} Reglas disparadas
  */
 export async function evaluateAlertRules(weather, rules = []) {
+  if (!weather || typeof weather !== "object" || !Array.isArray(rules)) {
+    throw new TypeError("El clima y las reglas de alerta deben tener un formato válido.");
+  }
   const triggered = [];
 
   for (const rule of rules) {
+    if (
+      !rule ||
+      typeof rule !== "object" ||
+      typeof rule.id !== "string" ||
+      typeof rule.city !== "string" ||
+      !["temperature", "wind", "rain"].includes(rule.type)
+    ) {
+      throw new TypeError("Se encontró una regla de alerta inválida.");
+    }
+    if (
+      (rule.type === "temperature" || rule.type === "wind") &&
+      !Number.isFinite(rule.threshold)
+    ) {
+      throw new TypeError(`El umbral de la alerta "${rule.id}" no es válido.`);
+    }
+    if (rule.type === "rain" && rule.threshold !== null && rule.threshold !== undefined) {
+      throw new TypeError(`La alerta de lluvia "${rule.id}" no debe tener umbral.`);
+    }
+
     const sameCity =
       !rule.city ||
       !weather.name ||
@@ -75,14 +97,14 @@ export async function evaluateAlertRules(weather, rules = []) {
     let detail = "";
 
     if (rule.type === "temperature") {
-      const limit = Number(rule.threshold);
-      if (Number.isFinite(limit) && weather.temperature > limit) {
+      const limit = rule.threshold;
+      if (Number.isFinite(weather.temperature) && weather.temperature > limit) {
         matched = true;
         detail = `${weather.name}: ${weather.temperature}°C supera el umbral de ${limit}°C.`;
       }
     } else if (rule.type === "wind") {
-      const limit = Number(rule.threshold);
-      if (Number.isFinite(limit) && weather.wind > limit) {
+      const limit = rule.threshold;
+      if (Number.isFinite(weather.wind) && weather.wind > limit) {
         matched = true;
         detail = `${weather.name}: viento de ${weather.wind} km/h supera el umbral de ${limit} km/h.`;
       }

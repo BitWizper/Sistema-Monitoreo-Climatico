@@ -626,3 +626,95 @@ body { background: #eef6f8; }
 
 #empty-alerts { margin: 8px 0 2px; color: #7f929b; font-size: 9px; line-height: 1.45; }
 #empty-alerts[hidden] { display: none; }
+
+.favorite-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #e5eef3;
+  border-radius: 14px;
+  background: #fff;
+}
+.favorite-form[hidden], #cancel-alert-edit[hidden] { display: none; }
+.favorite-form > label { color: #4c6472; font-size: 10px; font-weight: 600; }
+.favorite-form input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #dfe9ee;
+  border-radius: 9px;
+  color: #2c4552;
+  font-size: 11px;
+}
+.favorite-form-actions, .alert-form-actions { display: grid; gap: 8px; }
+.secondary-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid #dfe9ee;
+  border-radius: 9px;
+  background: #fff;
+  color: #536b78;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.secondary-button:hover { background: #f3f8fa; }
+.favorite-cities { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.city-card { min-width: 0; }
+.favorite-city-info { display: grid; min-width: 0; gap: 4px; }
+.favorite-city-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favorite-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2a4753;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.favorite-open:hover { color: #3a7396; }
+.favorite-actions { display: flex; flex: none; gap: 8px; }
+.favorite-actions button, .edit-alert {
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #4a829e;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.favorite-actions .favorite-delete, .remove-alert { color: #a45b62; }
+.city-card-bottom { min-height: 18px; }
+.empty-state {
+  margin: 8px 0;
+  color: #7f929b;
+  font-size: 10px;
+}
+.empty-state[hidden] { display: none; }
+.alert-form-actions { margin-top: 2px; }
+.alert-form-actions .primary-button { width: 100%; }
+.edit-alert { flex: none; }
+.weather-status.cached { color: #e9f1cb; }
+.weather-status.stale { color: #ffe2aa; }
+.weather-status.error { color: #ffd2d2; }
+.weather-status.loading span { animation: status-pulse 1s ease-in-out infinite alternate; }
+.search-status.error, .form-feedback.error, .field-error:not(:empty) { color: #b6404a; }
+.search-status.loading { border-color: #b7d5e2; }
+.favorite-form input:focus, .search-form input:focus {
+  outline: 3px solid #7fb3cf24;
+  outline-offset: 1px;
+}
+.active-alert .edit-alert { margin-left: auto; }
+.active-alert .remove-alert { flex: none; }
+
+@keyframes status-pulse {
+  from { opacity: .45; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 619px) {
+  .favorite-cities { grid-template-columns: 1fr; }
+  .favorite-form-actions { grid-template-columns: 1fr 1fr; }
+}

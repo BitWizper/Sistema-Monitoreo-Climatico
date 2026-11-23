@@ -1,3 +1,128 @@
+import { deleteRecord, putRecord, readAllRecords, readRecord } from "./storageService.js";
+
+const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+const MAX_CACHED_QUERIES = 100;
+
+function normalizeCityQuery(cityName) {
+  return cityName.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function getCoordinateCacheKey(lat, lon) {
+  return `coords:${lat.toFixed(2)},${lon.toFixed(2)}`;
+}
+
+function stripCoordinates(weather) {
+  const cachedWeather = { ...weather };
+  delete cachedWeather.coordinates;
+  delete cachedWeather.cacheInfo;
+  return cachedWeather;
+}
+
+function assertCoordinates(lat, lon) {
+  if (
+    !Number.isFinite(lat) ||
+    lat < -90 ||
+    lat > 90 ||
+    !Number.isFinite(lon) ||
+    lon < -180 ||
+    lon > 180
+  ) {
+    throw new Error("Las coordenadas no son válidas.");
+  }
+}
+
+function isValidWeatherData(weather) {
+  return Boolean(
+    weather &&
+      typeof weather.name === "string" &&
+      typeof weather.country === "string" &&
+      typeof weather.condition === "string" &&
+      Number.isFinite(weather.temperature) &&
+      Number.isFinite(weather.feels) &&
+      Number.isFinite(weather.humidity) &&
+      Number.isFinite(weather.wind) &&
+    Array.isArray(weather.forecastDays) &&
+    weather.forecastDays.every((day) =>
+      day &&
+      typeof day.date === "string" &&
+      typeof day.condition === "string" &&
+      Number.isFinite(day.maxTemp) &&
+      Number.isFinite(day.minTemp) &&
+      Number.isFinite(day.rainProb)
+    )
+  );
+}
+
+async function pruneWeatherCache() {
+  const records = await readAllRecords("cacheConsultas");
+  if (records.length <= MAX_CACHED_QUERIES) return;
+  const oldestFirst = records
+    .slice()
+    .sort((first, second) => Date.parse(first.cachedAt) - Date.parse(second.cachedAt));
+  const expiredCount = records.length - MAX_CACHED_QUERIES;
+  for (const record of oldestFirst.slice(0, expiredCount)) {
+    await deleteRecord("cacheConsultas", record.key);
+  }
+}
+
+async function saveWeatherCache(key, weather, cacheInfo = {}) {
+  const cachedAt = cacheInfo.cachedAt || new Date().toISOString();
+  const expiresAt = cacheInfo.expiresAt || new Date(Date.parse(cachedAt) + WEATHER_CACHE_TTL_MS).toISOString();
+  const record = {
+    key,
+    data: stripCoordinates(weather),
+    cachedAt,
+    expiresAt,
+  };
+
+  try {
+    await putRecord("cacheConsultas", record);
+    await pruneWeatherCache();
+    return { source: "live", cachedAt, expiresAt, stale: false };
+  } catch (error) {
+    console.error("No se pudo guardar la consulta meteorológica en caché.", error);
+    return {
+      source: "live",
+      cachedAt,
+      expiresAt,
+      stale: false,
+      warning: "No se pudo guardar una copia local de esta consulta.",
+    };
+  }
+}
+
+async function loadCachedWeather(key, coordinates) {
+  const cached = await readRecord("cacheConsultas", key);
+  if (!cached) return null;
+  if (!isValidWeatherData(cached.data)) {
+    throw new Error(`La consulta guardada "${key}" tiene un formato meteorológico inválido.`);
+  }
+
+  return {
+    ...cached.data,
+    ...(coordinates ? { coordinates } : {}),
+    cacheInfo: {
+      source: "cache",
+      cachedAt: cached.cachedAt,
+      expiresAt: cached.expiresAt,
+      stale: Date.now() >= Date.parse(cached.expiresAt),
+    },
+  };
+}
+
+function mergeCacheWarning(weather, cacheInfo) {
+  if (!weather.cacheInfo?.warning && !cacheInfo.warning) {
+    return { ...weather, cacheInfo };
+  }
+  return {
+    ...weather,
+    cacheInfo: {
+      ...cacheInfo,
+      warning: weather.cacheInfo?.warning || cacheInfo.warning,
+    },
+  };
+}
+
 /**
  * Busca coordenadas geográficas de una ciudad mediante Open-Meteo Geocoding API.
  * @param {string} cityName Nombre de la ciudad a buscar.
@@ -7,6 +132,9 @@ export async function searchCityCoordinates(cityName) {
   const cleanQuery = typeof cityName === "string" ? cityName.trim() : "";
   if (!cleanQuery) {
     throw new Error("Ingresa el nombre de una ciudad.");
+  }
+  if (cleanQuery.length > 100) {
+    throw new Error("El nombre de la ciudad no puede superar 100 caracteres.");
   }
 
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cleanQuery)}&count=1&language=es&format=json`;
@@ -22,6 +150,10 @@ export async function searchCityCoordinates(cityName) {
   }
 
   const place = data.results[0];
+  if (typeof place.name !== "string" || !place.name.trim()) {
+    throw new Error("La geocodificación devolvió un nombre de ciudad inválido.");
+  }
+  assertCoordinates(place.latitude, place.longitude);
   return {
     name: place.name,
     country: place.country_code || "XX",
@@ -56,7 +188,7 @@ function mapWeatherCode(code) {
     82: "Chubascos fuertes",
     95: "Tormenta eléctrica",
   };
-  return conditions[code] ?? "Condición variable";
+  return Object.hasOwn(conditions, code) ? conditions[code] : "Condición variable";
 }
 
 /**
@@ -123,6 +255,8 @@ export function normalizeWeatherData(rawData, location) {
  * @returns {Promise<object>}
  */
 export async function getWeatherByCoords(lat, lon, meta = {}) {
+  assertCoordinates(lat, lon);
+  const cacheKey = getCoordinateCacheKey(lat, lon);
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lon),
@@ -131,54 +265,76 @@ export async function getWeatherByCoords(lat, lon, meta = {}) {
     timezone: "auto",
   });
 
-  const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Error al obtener el pronóstico (${response.status}).`);
-  }
-
-  const rawData = await response.json();
-  let location = {
-    name: meta.name || "Ubicación actual",
-    country: meta.country || "LOCAL",
-    countryName: meta.countryName || "",
-    region: meta.region || "",
-  };
-
-  if (!meta.name) {
-    try {
-      const revUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=es`;
-      const revResponse = await fetch(revUrl);
-      if (!revResponse.ok) {
-        throw new Error(`Error al resolver la ubicación (${revResponse.status}).`);
-      }
-      const place = await revResponse.json();
-      const administrativeLocality = place.localityInfo?.administrative
-        ?.slice()
-        .reverse()
-        .find((area) => area.adminLevel >= 8)?.name;
-      const placeName = administrativeLocality || place.city || place.locality || place.principalSubdivision;
-      if (!placeName) {
-        throw new Error("La geocodificación no devolvió una localidad.");
-      }
-      location = {
-        name: placeName,
-        country: place.countryCode || "XX",
-        countryName: place.countryName || place.countryCode || "Desconocido",
-        region: place.principalSubdivision || "",
-      };
-    } catch {
-      location = {
-        name: "Ubicación actual",
-        country: "GPS",
-        countryName: `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
-      };
+  try {
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error(`Error al obtener el pronóstico (${response.status}).`);
     }
-  }
 
-  return {
-    ...normalizeWeatherData(rawData, location),
-    coordinates: { latitude: lat, longitude: lon },
-  };
+    const rawData = await response.json();
+    let location = {
+      name: meta.name || "Ubicación actual",
+      country: meta.country || "LOCAL",
+      countryName: meta.countryName || "",
+      region: meta.region || "",
+    };
+
+    if (!meta.name) {
+      try {
+        const revUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=es`;
+        const revResponse = await fetch(revUrl);
+        if (!revResponse.ok) {
+          throw new Error(`Error al resolver la ubicación (${revResponse.status}).`);
+        }
+        const place = await revResponse.json();
+        const administrativeLocality = place.localityInfo?.administrative
+          ?.slice()
+          .reverse()
+          .find((area) => area.adminLevel >= 8)?.name;
+        const placeName = administrativeLocality || place.city || place.locality || place.principalSubdivision;
+        if (!placeName) {
+          throw new Error("La geocodificación no devolvió una localidad.");
+        }
+        location = {
+          name: placeName,
+          country: place.countryCode || "XX",
+          countryName: place.countryName || place.countryCode || "Desconocido",
+          region: place.principalSubdivision || "",
+        };
+      } catch (error) {
+        console.warn("No se pudo resolver el nombre de la ubicación; se usarán coordenadas aproximadas.");
+        location = {
+          name: "Ubicación actual",
+          country: "GPS",
+          countryName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
+        };
+      }
+    }
+
+    const weather = {
+      ...normalizeWeatherData(rawData, location),
+      coordinates: { latitude: lat, longitude: lon },
+    };
+    if (!isValidWeatherData(weather)) {
+      throw new Error("La respuesta meteorológica contiene datos inválidos.");
+    }
+    const cacheInfo = await saveWeatherCache(cacheKey, weather);
+    return { ...weather, cacheInfo };
+  } catch (networkError) {
+    try {
+      const cachedWeather = await loadCachedWeather(cacheKey, {
+        latitude: Number(lat.toFixed(2)),
+        longitude: Number(lon.toFixed(2)),
+      });
+      if (cachedWeather) return cachedWeather;
+    } catch (cacheError) {
+      throw new AggregateError(
+        [networkError, cacheError],
+        "No se pudo consultar el clima ni leer la caché local."
+      );
+    }
+    throw networkError;
+  }
 }
 
 /**
@@ -187,11 +343,37 @@ export async function getWeatherByCoords(lat, lon, meta = {}) {
  * @returns {Promise<object>}
  */
 export async function getWeatherByCity(cityName) {
-  const coords = await searchCityCoordinates(cityName);
-  return getWeatherByCoords(coords.lat, coords.lon, {
-    name: coords.name,
-    country: coords.country,
-    countryName: coords.countryName,
-    region: coords.region,
-  });
+  const cleanQuery = typeof cityName === "string" ? cityName.trim() : "";
+  if (!cleanQuery) throw new Error("Ingresa el nombre de una ciudad.");
+  const cacheKey = `city:${normalizeCityQuery(cleanQuery)}`;
+
+  try {
+    const coords = await searchCityCoordinates(cleanQuery);
+    const weather = await getWeatherByCoords(coords.lat, coords.lon, {
+      name: coords.name,
+      country: coords.country,
+      countryName: coords.countryName,
+      region: coords.region,
+    });
+    const cacheKeys = new Set([
+      cacheKey,
+      `city:${normalizeCityQuery(weather.name)}`,
+    ]);
+    let cacheInfo = weather.cacheInfo;
+    for (const key of cacheKeys) {
+      cacheInfo = await saveWeatherCache(key, weather, cacheInfo);
+    }
+    return mergeCacheWarning(weather, cacheInfo);
+  } catch (networkError) {
+    try {
+      const cachedWeather = await loadCachedWeather(cacheKey);
+      if (cachedWeather) return cachedWeather;
+    } catch (cacheError) {
+      throw new AggregateError(
+        [networkError, cacheError],
+        "No se pudo consultar la ciudad ni leer la caché local."
+      );
+    }
+    throw networkError;
+  }
 }

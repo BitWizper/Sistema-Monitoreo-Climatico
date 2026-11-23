@@ -82,7 +82,7 @@
             <form class="search-form" id="search-form" role="search">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></svg>
               <label class="sr-only" for="city-search">Buscar ciudad</label>
-              <input id="city-search" name="city" type="search" placeholder="Buscar ciudad..." autocomplete="off" />
+              <input id="city-search" name="city" type="search" maxlength="100" placeholder="Buscar ciudad..." autocomplete="off" />
               <button type="submit" class="search-submit" aria-label="Buscar">↵</button>
               <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
             </form>
@@ -148,20 +148,19 @@
                 <div><p class="section-kicker">TUS LUGARES</p><h2 id="favorites-title">Ciudades favoritas</h2></div>
                 <button class="text-button" id="add-favorite" type="button">+ Agregar ciudad</button>
               </div>
-              <div class="favorite-cities" id="favorite-cities">
-                <button class="city-card" type="button" data-city="Madrid">
-                  <span class="city-card-top"><span><strong>Madrid</strong><small>España</small></span><span class="mini-weather sunny" aria-hidden="true">☀</span></span>
-                  <span class="city-card-bottom"><strong>18°</strong><span>Despejado</span><span class="city-low">Mín. 12°</span></span>
-                </button>
-                <button class="city-card" type="button" data-city="Buenos Aires">
-                  <span class="city-card-top"><span><strong>Buenos Aires</strong><small>Argentina</small></span><span class="mini-weather partly" aria-hidden="true">☀</span></span>
-                  <span class="city-card-bottom"><strong>22°</strong><span>Algo de sol</span><span class="city-low">Mín. 16°</span></span>
-                </button>
-                <button class="city-card" type="button" data-city="Bogotá">
-                  <span class="city-card-top"><span><strong>Bogotá</strong><small>Colombia</small></span><span class="mini-weather rainy" aria-hidden="true">☂</span></span>
-                  <span class="city-card-bottom"><strong>14°</strong><span>Lluvia ligera</span><span class="city-low">Mín. 9°</span></span>
-                </button>
-              </div>
+              <form id="favorite-form" class="favorite-form" hidden>
+                <label for="favorite-city">Ciudad</label>
+                <input id="favorite-city" name="city" type="text" maxlength="100" autocomplete="off" required />
+                <label for="favorite-alias">Nombre visible (opcional)</label>
+                <input id="favorite-alias" name="alias" type="text" maxlength="60" autocomplete="off" />
+                <div class="favorite-form-actions">
+                  <button class="primary-button" type="submit">Guardar favorito</button>
+                  <button class="secondary-button" id="cancel-favorite" type="button">Cancelar</button>
+                </div>
+                <p id="favorite-feedback" class="form-feedback" role="status" aria-live="polite"></p>
+              </form>
+              <div class="favorite-cities" id="favorite-cities" aria-live="polite"></div>
+              <p id="empty-favorites" class="empty-state">Todavía no tienes ciudades favoritas.</p>
             </section>
           </section>
 
@@ -183,7 +182,10 @@
                 <div class="select-wrap"><select id="alert-type" name="type" required><option value="temperature">La temperatura supere</option><option value="rain">Se pronostique lluvia</option><option value="wind">El viento supere</option></select><span aria-hidden="true">⌄</span></div>
                 <div class="threshold-row"><label class="sr-only" for="alert-threshold">Umbral de alerta</label><input id="alert-threshold" name="threshold" type="number" value="30" min="-50" max="60" required /><span id="threshold-unit">°C</span><span id="threshold-hint" class="threshold-hint">Umbral de temperatura</span></div>
                 <div id="threshold-error" class="field-error" aria-live="polite"></div>
-                <button class="primary-button" type="submit" disabled><span aria-hidden="true">＋</span> Crear alerta</button>
+                <div class="alert-form-actions">
+                  <button class="primary-button" type="submit" disabled><span aria-hidden="true">＋</span> Crear alerta</button>
+                  <button id="cancel-alert-edit" class="secondary-button" type="button" hidden>Cancelar edición</button>
+                </div>
                 <p id="alert-feedback" class="form-feedback" role="status" aria-live="polite"></p>
               </form>
               <div class="active-alerts">

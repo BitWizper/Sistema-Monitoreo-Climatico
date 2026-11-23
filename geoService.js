@@ -14,10 +14,20 @@ export function getCurrentCoordinates(options = {}) {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-        });
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        if (
+          !Number.isFinite(lat) ||
+          lat < -90 ||
+          lat > 90 ||
+          !Number.isFinite(lon) ||
+          lon < -180 ||
+          lon > 180
+        ) {
+          reject(new Error("El navegador devolvió coordenadas inválidas."));
+          return;
+        }
+        resolve({ lat, lon });
       },
       (error) => {
         const errorMap = {
@@ -51,11 +61,18 @@ export async function resolveInitialWeather(fallbackCity = "Mérida") {
     const weather = await getWeatherByCoords(lat, lon);
     return { weather, source: "geolocation" };
   } catch (error) {
-    const weather = await getWeatherByCity(fallbackCity);
-    return {
-      weather,
-      source: "fallback",
-      reason: error.message,
-    };
+    try {
+      const weather = await getWeatherByCity(fallbackCity);
+      return {
+        weather,
+        source: "fallback",
+        reason: error.message,
+      };
+    } catch (fallbackError) {
+      throw new AggregateError(
+        [error, fallbackError],
+        "No se pudo consultar la ubicación actual ni la ciudad alternativa."
+      );
+    }
   }
 }
