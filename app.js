@@ -382,7 +382,10 @@ async function saveAlertRules() {
 function getAlertLabel(rule) {
   if (rule.type === "rain") return "Lluvia pronosticada";
   if (rule.type === "wind") return `Viento > ${rule.threshold} km/h`;
-  return `Temperatura > ${rule.threshold}°C`;
+  const threshold = fahrenheit
+    ? Math.round((rule.threshold * 9) / 5 + 32)
+    : rule.threshold;
+  return `Temperatura > ${threshold}°${fahrenheit ? "F" : "C"}`;
 }
 
 function renderActiveAlerts() {
@@ -516,11 +519,12 @@ async function updateAlertLocation(weather, isFallback = false) {
 }
 
 async function checkAlertRules(weather, rules = activeAlertRules) {
-  if (weather.cacheInfo?.source === "cache") return [];
+  if (weather.cacheInfo?.source === "cache") {
+    alertFeedback.textContent = `Alerta guardada para ${weather.name}; se evaluará cuando haya datos actualizados.`;
+    return [];
+  }
   const triggered = await evaluateAlertRules(weather, rules);
-  if (liveWeather.cacheInfo?.source === "cache") {
-    alertFeedback.textContent = `Alerta guardada para ${selectedLocation.name}; se evaluará cuando haya datos actualizados.`;
-  } else if (triggered.length) {
+  if (triggered.length) {
     if (rules === activeAlertRules) await saveAlertRules();
     showToast(triggered.map((rule) => rule.detail).join(" "));
   }
@@ -675,9 +679,9 @@ function syncThresholdField() {
   const isWind = alertType.value === "wind";
   const hasThreshold = !isRain;
   thresholdInput.disabled = !hasThreshold;
-  thresholdInput.min = isWind ? "0" : "-50";
-  thresholdInput.max = isWind ? "300" : "60";
-  document.querySelector("#threshold-unit").textContent = isWind ? "km/h" : "°C";
+  thresholdInput.min = isWind ? "0" : fahrenheit ? "-58" : "-50";
+  thresholdInput.max = isWind ? "300" : fahrenheit ? "140" : "60";
+  document.querySelector("#threshold-unit").textContent = isWind ? "km/h" : fahrenheit ? "°F" : "°C";
   document.querySelector("#threshold-hint").textContent = isWind ? "Umbral de velocidad" : "Umbral de temperatura";
   thresholdInput.setAttribute("aria-describedby", hasThreshold ? "threshold-error" : "");
   thresholdError.textContent = "";
@@ -700,8 +704,17 @@ function resetAlertForm() {
 }
 
 function beginAlertEdit(rule) {
-  if (!rule.coordinates) {
-    showToast("Esta alerta no tiene coordenadas válidas y no se puede editar.");
+  let coordinates = rule.coordinates;
+  if (!coordinates) {
+    const matchingLocation = availableAlertLocations.find((location) =>
+      normalizeKey(location.name) === normalizeKey(rule.city) &&
+      (!rule.country || location.country === rule.country)
+    );
+    coordinates = matchingLocation?.coordinates ||
+      (normalizeKey(currentCity.name) === normalizeKey(rule.city) ? currentCity.coordinates : null);
+  }
+  if (!coordinates) {
+    showToast("Esta alerta no tiene una ubicación válida. Crea una alerta nueva o selecciona la ubicación actual.");
     return;
   }
   editingAlertId = rule.id;
@@ -709,13 +722,13 @@ function beginAlertEdit(rule) {
     id: getAlertLocationId({
       name: rule.city,
       country: rule.country,
-      coordinates: rule.coordinates,
+      coordinates,
     }),
     name: rule.city,
     country: rule.country,
     countryName: rule.countryName,
     region: rule.region,
-    coordinates: rule.coordinates,
+    coordinates,
     distanceKm: 0,
     isCurrent: false,
   };
@@ -733,7 +746,9 @@ function beginAlertEdit(rule) {
   locationSelect.disabled = false;
   locationSelect.value = location.id;
   alertType.value = rule.type;
-  thresholdInput.value = rule.threshold ?? "30";
+  thresholdInput.value = rule.type === "temperature" && fahrenheit
+    ? String(Math.round((rule.threshold * 9) / 5 + 32))
+    : (rule.threshold ?? "30");
   document.querySelector("#cancel-alert-edit").hidden = false;
   document.querySelector("#alert-form .primary-button").textContent = "Guardar cambios";
   syncThresholdField();
@@ -757,10 +772,10 @@ alertForm.addEventListener("submit", async (event) => {
 
   const threshold = Number(thresholdInput.value);
   const isWind = alertType.value === "wind";
-  const minimum = isWind ? 0 : -50;
-  const maximum = isWind ? 300 : 60;
+  const minimum = isWind ? 0 : fahrenheit ? -58 : -50;
+  const maximum = isWind ? 300 : fahrenheit ? 140 : 60;
   if (alertType.value !== "rain" && (!Number.isFinite(threshold) || threshold < minimum || threshold > maximum)) {
-    thresholdError.textContent = `Ingresa un valor entre ${minimum} y ${maximum} ${isWind ? "km/h" : "°C"}.`;
+    thresholdError.textContent = `Ingresa un valor entre ${minimum} y ${maximum} ${isWind ? "km/h" : fahrenheit ? "°F" : "°C"}.`;
     thresholdInput.setAttribute("aria-invalid", "true");
     thresholdInput.focus();
     return;
@@ -778,7 +793,12 @@ alertForm.addEventListener("submit", async (event) => {
     region: selectedLocation.region,
     coordinates: reduceCoordinatePrecision(selectedLocation.coordinates),
     type: alertType.value,
-    threshold: alertType.value === "rain" ? null : threshold,
+    threshold: alertType.value === "rain"
+      ? null
+      : alertType.value === "temperature" && fahrenheit
+        ? Math.round((threshold - 32) * 5 / 9)
+        : threshold,
+    ...(existingRule?.lastTriggeredAt ? { lastTriggeredAt: existingRule.lastTriggeredAt } : {}),
   };
 
   if (activeAlertRules.some((rule) =>
@@ -804,7 +824,27 @@ alertForm.addEventListener("submit", async (event) => {
         rule.id === updatedRule.id ? updatedRule : rule
       );
       renderActiveAlerts();
-      alertFeedback.textContent = `Alerta actualizada para ${updatedRule.city}.`;
+
+      try {
+        const liveWeather = await getWeatherByCoords(
+          updatedRule.coordinates.latitude,
+          updatedRule.coordinates.longitude,
+          {
+            name: updatedRule.city,
+            country: updatedRule.country,
+            countryName: updatedRule.countryName,
+            region: updatedRule.region,
+          }
+        );
+        const triggered = await checkAlertRules(liveWeather, [updatedRule]);
+        await saveAlertRules();
+        alertFeedback.textContent = triggered.length
+          ? `Alerta actualizada: ${triggered[0].detail}`
+          : `Alerta actualizada para ${updatedRule.city}.`;
+      } catch (weatherError) {
+        console.warn(`La alerta se actualizó, pero no se pudo comprobar su clima.`, weatherError);
+        alertFeedback.textContent = `Alerta actualizada para ${updatedRule.city}. Se comprobará al actualizar el pronóstico.`;
+      }
       resetAlertForm();
       return;
     }
@@ -813,22 +853,30 @@ alertForm.addEventListener("submit", async (event) => {
       console.error("No se pudo solicitar permiso para las notificaciones.", error);
       return "default";
     });
-    const liveWeather = await getWeatherByCoords(
-      selectedLocation.coordinates.latitude,
-      selectedLocation.coordinates.longitude,
-      {
-        name: selectedLocation.name,
-        country: selectedLocation.country,
-        countryName: selectedLocation.countryName,
-        region: selectedLocation.region,
-      }
-    );
-    const permission = await permissionPromise;
+    let liveWeather = null;
     const savedRule = await createRecord("alertas", newRule);
     activeAlertRules.push(savedRule);
     renderActiveAlerts();
-    const triggered = await checkAlertRules(liveWeather, [savedRule]);
-    await saveAlertRules();
+    const permission = await permissionPromise;
+
+    let triggered = [];
+    try {
+      liveWeather = await getWeatherByCoords(
+        selectedLocation.coordinates.latitude,
+        selectedLocation.coordinates.longitude,
+        {
+          name: selectedLocation.name,
+          country: selectedLocation.country,
+          countryName: selectedLocation.countryName,
+          region: selectedLocation.region,
+        }
+      );
+      triggered = await checkAlertRules(liveWeather, [savedRule]);
+      await saveAlertRules();
+    } catch (weatherError) {
+      console.warn(`La alerta quedó guardada, pero no se pudo consultar el clima de ${selectedLocation.name}.`, weatherError);
+    }
+
     if (triggered.length) {
       alertFeedback.textContent = `Alerta creada: ${triggered[0].detail}`;
     } else if (permission === "granted") {
