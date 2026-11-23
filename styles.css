@@ -42,6 +42,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .icon-button { position: relative; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #e2edf2; border-radius: 12px; background: #fff; cursor: pointer; }
 .icon-button svg { width: 18px; fill: none; stroke: #71808c; stroke-width: 1.7; stroke-linecap: round; }
 .notification-dot { position: absolute; top: 9px; right: 10px; width: 6px; height: 6px; border: 1px solid white; border-radius: 50%; background: #f17d86; }
+.notification-dot[hidden] { display: none; }
 .content-grid { display: grid; gap: 22px; }
 .primary-column, .secondary-column { min-width: 0; display: grid; align-content: start; gap: 22px; }
 .weather-card { position: relative; overflow: hidden; min-height: 278px; padding: 23px 24px 18px; border-radius: 20px; background: linear-gradient(112deg, #57a8d4 0%, #4a97c4 56%, #3a86b4 100%); color: #fff; box-shadow: 0 10px 24px #4a97c42a; }
@@ -122,6 +123,116 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .sun-card, .alert-card { padding: 18px; border: 1px solid #e8f0f4; border-radius: 17px; background: #fff; }
 .compact-heading { align-items: center; margin-bottom: 17px; }
 .compact-heading h2 { font-size: 16px; }
+.quality-card { min-height: 190px; }
+.quality-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #fff5df;
+  color: #d9a347;
+  font-size: 20px;
+}
+.quality-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 14px;
+  color: #3d5d6b;
+  font-size: 12px;
+}
+.quality-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: #8ebd75;
+  box-shadow: 0 0 0 4px #edf5e8;
+}
+.quality-dot.rain { background: #668db0; box-shadow: 0 0 0 4px #edf3f7; }
+.quality-dot.wind { background: #d59e62; box-shadow: 0 0 0 4px #faf2e8; }
+.quality-dot.uv { background: #e1b34d; box-shadow: 0 0 0 4px #fbf4df; }
+.quality-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.quality-metrics div {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  row-gap: 3px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 7px;
+  border: 1px solid #edf2f4;
+  border-radius: 11px;
+  background: #fafcfd;
+}
+.quality-metrics div > span {
+  grid-row: 1 / 3;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #eef6fa;
+  color: #5b91aa;
+  font-size: 10px;
+}
+.quality-metrics small { color: #8b9aa4; font-size: 8px; }
+.quality-metrics strong {
+  overflow: hidden;
+  color: #34515f;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.daylight-track {
+  position: relative;
+  height: 5px;
+  margin: 13px 3px 7px;
+  overflow: visible;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #dce8ee, #f3cf84 20%, #f5df9e 75%, #dce8ee);
+}
+.daylight-track > span:first-child {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: #e8ad4c;
+  transition: width .4s ease;
+}
+.daylight-track > span:last-child {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #d9973e;
+  box-shadow: 0 1px 5px #52616a55;
+  transform: translate(-50%, -50%);
+  transition: left .4s ease;
+}
+.daylight-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+  color: #8b9aa4;
+  font-size: 8px;
+}
+.quality-advice {
+  margin: 12px 0 0;
+  padding-top: 11px;
+  border-top: 1px solid #edf2f4;
+  color: #718790;
+  font-size: 9px;
+  line-height: 1.5;
+}
 .moon-icon { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 10px; background: #eef7fa; color: #3a7ba0; font-size: 22px; }
 .sun-times { display: flex; justify-content: space-between; padding: 0 4px; }
 .sun-times > div { display: grid; grid-template-columns: 24px auto; column-gap: 8px; align-items: center; }

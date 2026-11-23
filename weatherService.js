@@ -204,6 +204,13 @@ function mapUvCategory(uvMax) {
   return "Muy alto";
 }
 
+function normalizeSolarTime(value, utcOffsetSeconds) {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || "");
+  if (!parts || !Number.isFinite(utcOffsetSeconds)) return value;
+  const [year, month, day, hour, minute] = parts.slice(1).map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute) - utcOffsetSeconds * 1000).toISOString();
+}
+
 /**
  * Normaliza la respuesta cruda de Open-Meteo al modelo de datos de la aplicación.
  * @param {object} rawData Respuesta JSON de /v1/forecast.
@@ -218,6 +225,9 @@ export function normalizeWeatherData(rawData, location) {
 
   const daily = rawData.daily || {};
   const maxUv = Array.isArray(daily.uv_index_max) ? daily.uv_index_max[0] : undefined;
+  const currentUv = Number.isFinite(current.uv_index) ? current.uv_index : maxUv;
+  const sunrise = Array.isArray(daily.sunrise) ? daily.sunrise[0] : undefined;
+  const sunset = Array.isArray(daily.sunset) ? daily.sunset[0] : undefined;
 
   const forecastDays = Array.isArray(daily.time)
     ? daily.time.slice(0, 5).map((dateStr, index) => ({
@@ -240,7 +250,10 @@ export function normalizeWeatherData(rawData, location) {
     condition: mapWeatherCode(current.weather_code),
     humidity: Math.round(current.relative_humidity_2m),
     wind: Math.round(current.wind_speed_10m),
-    uv: mapUvCategory(maxUv),
+    uv: mapUvCategory(currentUv),
+    uvValue: typeof currentUv === "number" ? Math.round(currentUv * 10) / 10 : null,
+    sunrise: normalizeSolarTime(sunrise, rawData.utc_offset_seconds),
+    sunset: normalizeSolarTime(sunset, rawData.utc_offset_seconds),
     rawCode: current.weather_code,
     forecastDays,
     updatedAt: new Date().toISOString(),
@@ -260,8 +273,8 @@ export async function getWeatherByCoords(lat, lon, meta = {}) {
   const params = new URLSearchParams({
     latitude: String(lat),
     longitude: String(lon),
-    current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max",
+    current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,uv_index",
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset",
     timezone: "auto",
   });
 

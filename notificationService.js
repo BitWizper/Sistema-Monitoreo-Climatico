@@ -27,6 +27,8 @@ export async function showWeatherNotification(title, body) {
     body,
     tag: "climate-alert",
     renotify: true,
+    icon: "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
   };
 
   if ("serviceWorker" in navigator) {

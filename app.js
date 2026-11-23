@@ -1,6 +1,10 @@
 import { getWeatherByCity, getWeatherByCoords } from "./weatherService.js";
 import { resolveInitialWeather } from "./geoService.js";
-import { requestNotificationPermission, evaluateAlertRules } from "./notificationService.js";
+import {
+  requestNotificationPermission,
+  evaluateAlertRules,
+  showWeatherNotification,
+} from "./notificationService.js";
 import {
   createRecord,
   deleteRecord,
@@ -80,6 +84,106 @@ function toDisplayTemperature(celsius) {
   const temperature = fahrenheit ? Math.round((celsius * 9) / 5 + 32) : celsius;
   return `${temperature}°`;
 }
+
+function formatDayTime(value) {
+  if (!value) return "--:--";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--:--";
+  return new Intl.DateTimeFormat("es-MX", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function updateDayQuality(weather) {
+  const sunrise = document.querySelector("#sunrise-value");
+  const sunset = document.querySelector("#sunset-value");
+  const uvValue = document.querySelector("#uv-value");
+  const qualityLabel = document.querySelector("#quality-label");
+  const qualityDot = document.querySelector("#quality-dot");
+  const advice = document.querySelector("#quality-advice");
+  const deviceClock = document.querySelector("#device-clock");
+  const daylightStatus = document.querySelector("#daylight-status");
+  const daylightProgress = document.querySelector("#daylight-progress");
+  const daylightTrack = document.querySelector(".daylight-track");
+  const daylightNow = document.querySelector("#daylight-now");
+  const now = new Date();
+  const sunriseTime = Date.parse(weather.sunrise || "");
+  const sunsetTime = Date.parse(weather.sunset || "");
+  const hasSolarTimes = Number.isFinite(sunriseTime) && Number.isFinite(sunsetTime);
+  let isDaylight = false;
+
+  sunrise.textContent = formatDayTime(weather.sunrise);
+  sunset.textContent = formatDayTime(weather.sunset);
+  deviceClock.textContent = `Hora del dispositivo ${new Intl.DateTimeFormat("es-MX", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(now)}`;
+  uvValue.textContent = weather.uvValue != null
+    ? `${weather.uvValue} · ${weather.uv}`
+    : weather.uv;
+
+  if (hasSolarTimes) {
+    const daylightDuration = sunsetTime - sunriseTime;
+    isDaylight = now.getTime() >= sunriseTime && now.getTime() < sunsetTime;
+    const progress = daylightDuration > 0
+      ? Math.min(100, Math.max(0, ((now.getTime() - sunriseTime) / daylightDuration) * 100))
+      : 0;
+    daylightProgress.style.width = `${progress}%`;
+    daylightNow.style.left = `${progress}%`;
+    daylightTrack.setAttribute("aria-valuenow", String(Math.round(progress)));
+    if (now.getTime() < sunriseTime) {
+      const untilSunrise = Math.ceil((sunriseTime - now.getTime()) / 60000);
+      daylightStatus.textContent = `Amanece en ${Math.floor(untilSunrise / 60)} h ${untilSunrise % 60} min`;
+    } else if (now.getTime() < sunsetTime) {
+      const remaining = Math.ceil((sunsetTime - now.getTime()) / 60000);
+      daylightStatus.textContent = `Quedan ${Math.floor(remaining / 60)} h ${remaining % 60} min de luz`;
+    } else {
+      daylightStatus.textContent = "El sol ya se ocultó";
+    }
+  } else {
+    daylightProgress.style.width = "0%";
+    daylightNow.style.left = "0%";
+    daylightTrack.removeAttribute("aria-valuenow");
+    daylightStatus.textContent = "Horario solar no disponible";
+  }
+
+  const today = weather.forecastDays?.[0];
+  const rainProbability = today?.rainProb ?? 0;
+  let label = "Condiciones favorables";
+  let tone = "good";
+  let recommendation = isDaylight
+    ? "El mejor momento para salir es ahora: hay luz y las condiciones son favorables."
+    : !hasSolarTimes
+      ? "No se pudo determinar el horario de luz para esta ubicación."
+      : now.getTime() < sunriseTime
+        ? "Aún no amanece; el mejor momento para salir comienza después del amanecer."
+        : "La luz del día terminó; revisa las condiciones después del próximo amanecer.";
+
+  if (rainProbability >= 50 || /lluvia|llovizna|tormenta|chubasco/i.test(weather.condition)) {
+    label = "Conviene llevar protección";
+    tone = "rain";
+    recommendation = `Hay ${rainProbability}% de probabilidad de lluvia; lleva paraguas o evita exposiciones largas.`;
+  } else if (weather.wind >= 30) {
+    label = "Viento elevado";
+    tone = "wind";
+    recommendation = `El viento alcanza ${weather.wind} km/h. Realiza actividades al aire libre con precaución.`;
+  } else if (weather.uvValue != null && weather.uvValue >= 6) {
+    label = "Protección UV necesaria";
+    tone = "uv";
+    recommendation = "El índice UV está alto. Aplica protector solar y, si puedes, espera a que baje para exponerte menos.";
+  } else if (today?.rainProb >= 20) {
+    label = "Posibilidad de lluvia";
+    tone = "rain";
+    recommendation = `Existe ${today.rainProb}% de probabilidad de lluvia. Ten un paraguas a la mano.`;
+  }
+
+  qualityLabel.textContent = label;
+  qualityDot.className = `quality-dot ${tone}`;
+  advice.textContent = recommendation;
+}
+
+window.setInterval(() => updateDayQuality(currentCity), 60 * 1000);
 
 function updateDateLabels(weather) {
   const now = new Date();
@@ -224,6 +328,7 @@ function renderForecast(days = []) {
 function updateWeather(city, source = "api") {
   currentCity = city;
   cacheCity(city);
+  updateDayQuality(city);
   updateDateLabels(city);
   const cityHeading = document.querySelector("#current-city");
   cityHeading.replaceChildren(document.createTextNode(city.name));
@@ -1103,9 +1208,44 @@ document.querySelectorAll(".nav-link, .mobile-nav-link").forEach((link) => {
 });
 
 if (notificationButton) {
+  if ("Notification" in window) {
+    notificationButton.setAttribute(
+      "aria-label",
+      Notification.permission === "granted"
+        ? "Notificaciones activadas"
+        : Notification.permission === "denied"
+          ? "Notificaciones bloqueadas"
+          : "Activar notificaciones"
+    );
+    if (Notification.permission === "granted") {
+      notificationButton.querySelector(".notification-dot")?.setAttribute("hidden", "");
+    }
+  }
+
   notificationButton.addEventListener("click", async () => {
     const status = await requestNotificationPermission();
-    showToast(status === "granted" ? "Notificaciones activadas." : `Estado de notificaciones: ${status}.`);
+    if (status === "granted") {
+      const today = currentCity.forecastDays?.[0];
+      const temperature = fahrenheit
+        ? `${Math.round((currentCity.temperature * 9) / 5 + 32)}°F`
+        : `${currentCity.temperature}°C`;
+      const summary = today
+        ? `${currentCity.name}: ${temperature}, ${currentCity.condition}. Máxima ${toDisplayTemperature(today.maxTemp)}, mínima ${toDisplayTemperature(today.minTemp)}.`
+        : `${currentCity.name}: ${temperature}, ${currentCity.condition}.`;
+      const sent = await showWeatherNotification("Clima de hoy", summary);
+      notificationButton.setAttribute("aria-label", "Notificaciones activadas");
+      notificationButton.querySelector(".notification-dot")?.setAttribute("hidden", "");
+      showToast(sent
+        ? "Notificación enviada."
+        : "Las notificaciones están activadas.");
+    } else if (status === "denied") {
+      notificationButton.setAttribute("aria-label", "Notificaciones bloqueadas");
+      showToast("Las notificaciones están bloqueadas. Actívalas en la configuración del navegador.");
+    } else if (status === "unsupported") {
+      showToast("Este navegador no admite notificaciones.");
+    } else {
+      showToast("Permiso de notificaciones pendiente.");
+    }
   });
 }
 

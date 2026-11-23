@@ -172,11 +172,23 @@
           </section>
 
           <aside class="secondary-column" aria-label="Detalles y configuración">
-            <section class="sun-card" aria-labelledby="sun-title">
-              <div class="section-heading compact-heading"><div><p class="section-kicker">LUZ DEL DÍA</p><h2 id="sun-title">Sol y luna</h2></div><span class="moon-icon" aria-hidden="true">☾</span></div>
-              <div class="sun-times"><div><span class="sun-time-icon sunrise" aria-hidden="true">↗</span><small>AMANECER</small><strong>06:42 <span>AM</span></strong></div><div><span class="sun-time-icon sunset" aria-hidden="true">↘</span><small>ATARDECER</small><strong>05:58 <span>PM</span></strong></div></div>
-              <div class="sun-progress"><span class="sun-progress-dot"></span></div>
-              <div class="daylight-copy"><span>10 h 16 min de luz</span><span>6 h restantes</span></div>
+            <section class="sun-card quality-card" aria-labelledby="quality-title">
+              <div class="section-heading compact-heading"><div><p class="section-kicker">RESUMEN CLIMÁTICO</p><h2 id="quality-title">Calidad del día</h2></div><span class="quality-icon" aria-hidden="true">☀</span></div>
+              <div class="quality-status">
+                <span id="quality-dot" class="quality-dot"></span>
+                <strong id="quality-label">Calculando condiciones</strong>
+              </div>
+              <div class="quality-metrics">
+                <div><span aria-hidden="true">↗</span><small>Amanecer</small><strong id="sunrise-value">--:--</strong></div>
+                <div><span aria-hidden="true">↘</span><small>Atardecer</small><strong id="sunset-value">--:--</strong></div>
+                <div><span aria-hidden="true">☀</span><small>Índice UV</small><strong id="uv-value">--</strong></div>
+              </div>
+              <div class="daylight-track" role="progressbar" aria-label="Progreso de las horas de luz" aria-valuemin="0" aria-valuemax="100">
+                <span id="daylight-progress"></span>
+                <span id="daylight-now" aria-hidden="true"></span>
+              </div>
+              <div class="daylight-meta"><span id="device-clock">Hora del dispositivo --:--</span><span id="daylight-status">Calculando luz del día…</span></div>
+              <p id="quality-advice" class="quality-advice">Consultando las mejores condiciones del día…</p>
             </section>
 
             <section id="alertas" class="alert-card" aria-labelledby="alerts-title">

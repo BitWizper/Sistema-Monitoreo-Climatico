@@ -1,4 +1,4 @@
-const CACHE_NAME = "clima-shell-v7";
+const CACHE_NAME = "clima-shell-v10";
 const APP_ASSETS = [
   "./",
   "./index.html",
