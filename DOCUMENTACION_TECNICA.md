@@ -26,6 +26,8 @@ La base se abre como `ClimaDB`, versión `1`. Durante `onupgradeneeded` se crean
 | `preferencias` | `key` | Ninguno | `{ key, value }` |
 | `cacheConsultas` | `key` | Ninguno | `{ key, data, cachedAt, expiresAt }` |
 
+`data` en `cacheConsultas` es el clima normalizado: `{ name, country, countryName, region, temperature, feels, condition, humidity, wind, uv, rawCode, forecastDays, updatedAt }`. Cada elemento de `forecastDays` tiene `{ date, code, condition, maxTemp, minTemp, rainProb }`. No contiene `coordinates` ni `cacheInfo`. `cachedAt` y `expiresAt` son fechas parseables en formato ISO; los cuerpos cacheados se validan antes de guardar y leer.
+
 Reglas de validación principales:
 
 - Los IDs, nombres y claves no pueden estar vacíos; los nombres de ciudad tienen un máximo de 100 caracteres y los alias de favorito, 60.
