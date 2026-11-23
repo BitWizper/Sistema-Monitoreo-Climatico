@@ -347,8 +347,26 @@ export async function getWeatherByCity(cityName) {
   if (!cleanQuery) throw new Error("Ingresa el nombre de una ciudad.");
   const cacheKey = `city:${normalizeCityQuery(cleanQuery)}`;
 
+  const yucatanPlaces = {
+    uman: { name: "Umán", country: "MX", countryName: "México", region: "Yucatán", lat: 20.882, lon: -89.746 },
+    merida: { name: "Mérida", country: "MX", countryName: "México", region: "Yucatán", lat: 20.967, lon: -89.62318 },
+    valladolid: { name: "Valladolid", country: "MX", countryName: "México", region: "Yucatán", lat: 20.68812, lon: -88.19936 },
+    progreso: { name: "Progreso", country: "MX", countryName: "México", region: "Yucatán", lat: 21.2833, lon: -89.6667 },
+  };
+  const normalizedQuery = normalizeCityQuery(cleanQuery);
+  const knownPlace = yucatanPlaces[normalizedQuery];
+
   try {
-    const coords = await searchCityCoordinates(cleanQuery);
+    const coords = knownPlace
+      ? {
+          name: knownPlace.name,
+          country: knownPlace.country,
+          countryName: knownPlace.countryName,
+          region: knownPlace.region,
+          lat: knownPlace.lat,
+          lon: knownPlace.lon,
+        }
+      : await searchCityCoordinates(cleanQuery);
     const weather = await getWeatherByCoords(coords.lat, coords.lon, {
       name: coords.name,
       country: coords.country,

@@ -377,7 +377,22 @@ body { background: #eef6f8; }
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 .forecast-day:hover { transform: translateY(-3px); border-color: #c2deeb; box-shadow: 0 10px 24px #2f5d7410; }
+.forecast-day { cursor: pointer; outline: none; }
+.forecast-day:focus-visible { box-shadow: 0 0 0 3px #b7dbea, 0 10px 24px #2f5d7410; }
+.forecast-day.selected { border-color: #82bdd7; background: #edf7fb; box-shadow: 0 8px 22px #4b83951a; transform: translateY(-2px); }
 .forecast-day.today { border-color: #bfe0ee; background: #e8f4f9; }
+.forecast-summary {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #ddebf1;
+  border-radius: 12px;
+  background: #f4f9fb;
+  color: #647985;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.forecast-summary[hidden] { display: none; }
+.forecast-summary:not([hidden]) { min-height: 38px; }
 .forecast-day-name strong { color: #2a4753; font-size: 11px; }
 .forecast-day-name span { color: #7f929c; font-size: 9px; }
 .forecast-icon { height: 44px; font-size: 28px; }
@@ -396,12 +411,19 @@ body { background: #eef6f8; }
 .favorite-cities { gap: 11px; }
 .city-card {
   padding: 15px;
+  min-height: 112px;
   border-color: #e5eef3;
   border-radius: 15px;
   box-shadow: 0 4px 14px #2f5d7407;
   transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 .city-card:hover { transform: translateY(-3px); border-color: #c0ddec; box-shadow: 0 10px 24px #2f5d7410; }
+.city-card { outline: none; }
+.city-card.switching { pointer-events: none; border-color: #82bdd7; }
+.city-card.disabled { opacity: .55; pointer-events: none; }
+.city-card:focus-visible { box-shadow: 0 0 0 3px #b7dbea, 0 10px 24px #2f5d7410; }
+.city-card-bottom { align-items: center; }
+.city-card-action { margin-left: auto; color: #4d7f9a; font-weight: 700; }
 .city-card-top strong { color: #2a4753; font-size: 12px; }
 .city-card-top small, .city-card-bottom > span { color: #7f929b; }
 .city-card-bottom > strong { color: #26404c; font-size: 22px; }

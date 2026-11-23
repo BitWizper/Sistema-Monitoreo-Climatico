@@ -118,7 +118,14 @@ function getForecastIcon(code) {
 
 function renderForecast(days = []) {
   const forecastList = document.querySelector("#forecast-list");
+  const forecastSummary = document.querySelector("#forecast-summary");
+  const previousSummaryHeight = forecastSummary.hidden
+    ? 38
+    : forecastSummary.offsetHeight;
+  forecastSummary.style.minHeight = `${Math.max(previousSummaryHeight, 38)}px`;
   forecastList.replaceChildren();
+  forecastSummary.hidden = true;
+  forecastSummary.replaceChildren();
 
   if (!days.length) {
     const message = document.createElement("p");
@@ -142,6 +149,36 @@ function renderForecast(days = []) {
     const icon = getForecastIcon(day.code);
     const article = document.createElement("article");
     article.className = `forecast-day${index === 0 ? " today" : ""}`;
+    article.tabIndex = 0;
+    article.setAttribute("role", "button");
+    article.setAttribute("aria-pressed", index === 0 ? "true" : "false");
+    article.setAttribute("aria-label", `Ver detalle del pronóstico de ${weekday}`);
+
+    const selectForecastDay = () => {
+      forecastList.querySelectorAll(".forecast-day").forEach((dayCard) => {
+        dayCard.classList.remove("selected");
+        dayCard.setAttribute("aria-pressed", "false");
+      });
+      article.classList.add("selected");
+      article.setAttribute("aria-pressed", "true");
+      forecastSummary.hidden = false;
+      const rainText = day.rainProb >= 50
+        ? "Alta probabilidad de lluvia"
+        : day.rainProb >= 20
+          ? "Posibilidad de lluvia"
+          : "Probabilidad de lluvia baja";
+      forecastSummary.replaceChildren(
+        document.createTextNode(`${weekday}: ${day.condition}. Máxima ${toDisplayTemperature(day.maxTemp)}, mínima ${toDisplayTemperature(day.minTemp)}. ${rainText}: ${day.rainProb}%.`)
+      );
+    };
+
+    article.addEventListener("click", selectForecastDay);
+    article.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectForecastDay();
+      }
+    });
 
     const dayName = document.createElement("div");
     dayName.className = "forecast-day-name";
@@ -179,6 +216,9 @@ function renderForecast(days = []) {
     article.append(dayName, iconElement, condition, range, rain);
     forecastList.append(article);
   });
+
+  const firstDay = forecastList.querySelector(".forecast-day");
+  if (firstDay) firstDay.click();
 }
 
 function updateWeather(city, source = "api") {
@@ -227,6 +267,7 @@ function updateWeather(city, source = "api") {
   searchForm.classList.remove("expanded");
   searchInput.value = "";
   searchInput.blur();
+  renderFavorites();
 }
 
 function createId() {
@@ -239,6 +280,17 @@ function renderFavorites() {
     const card = document.createElement("article");
     card.className = "city-card";
     card.dataset.favoriteId = favorite.id;
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Consultar el pronóstico de ${favorite.alias || favorite.name}`);
+
+    card.addEventListener("keydown", (event) => {
+      if ((event.key === "Enter" || event.key === " ") &&
+          !event.target.closest("button")) {
+        event.preventDefault();
+        openButton.click();
+      }
+    });
 
     const top = document.createElement("div");
     top.className = "city-card-top";
@@ -271,9 +323,21 @@ function renderFavorites() {
 
     const bottom = document.createElement("div");
     bottom.className = "city-card-bottom";
-    const description = document.createElement("span");
-    description.textContent = "Consultar pronóstico";
-    bottom.append(description);
+    const preview = recentWeather.get(normalizeKey(favorite.name));
+    if (preview) {
+      const temperature = document.createElement("strong");
+      temperature.textContent = toDisplayTemperature(preview.temperature);
+      const condition = document.createElement("span");
+      condition.textContent = preview.condition;
+      const action = document.createElement("span");
+      action.className = "city-card-action";
+      action.textContent = "Ver pronóstico →";
+      bottom.append(temperature, condition, action);
+    } else {
+      const description = document.createElement("span");
+      description.textContent = "Consultar pronóstico →";
+      bottom.append(description);
+    }
     card.append(top, bottom);
     favoriteCities.append(card);
   });
@@ -658,19 +722,34 @@ favoriteCities.addEventListener("click", async (event) => {
     }
     return;
   }
-  if (!event.target.closest(".favorite-open")) return;
+  if (!event.target.closest(".favorite-open") &&
+      event.target.closest(".favorite-actions")) return;
+
+  card.classList.add("switching");
+  card.setAttribute("aria-busy", "true");
+  const cards = Array.from(favoriteCities.querySelectorAll(".city-card"));
+  cards.forEach((favoriteCard) => {
+    favoriteCard.classList.toggle("disabled", favoriteCard !== card);
+  });
 
   try {
     const weather = await getWeatherByCity(favorite.name);
+    const scrollPosition = window.scrollY;
     updateWeather(weather);
+    currentAlertLocation = weather;
+    await updateAlertLocation(weather, false);
     await checkAlertRules(weather);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: scrollPosition, behavior: "auto" });
     showToast(weather.cacheInfo?.source === "cache"
       ? `${weather.name}: se muestra la última consulta guardada.`
       : `Mostrando el clima de ${weather.name}.`);
   } catch (error) {
     console.error(`No se pudo consultar el clima de ${favorite.name}.`, error);
     showToast(error.message || `No se pudo consultar ${favorite.name}.`);
+  } finally {
+    card.classList.remove("switching");
+    card.removeAttribute("aria-busy");
+    cards.forEach((favoriteCard) => favoriteCard.classList.remove("disabled"));
   }
 });
 
