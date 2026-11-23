@@ -34,6 +34,26 @@ function injectStyles() {
     .pwa-banner .pwa-primary{background:#5abef0;color:#0b2234}
     .pwa-banner .pwa-secondary{background:transparent;color:#cfe3f2}
     .pwa-banner button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+    @media (max-width:619px){
+      .pwa-banner{
+        bottom:calc(12px + env(safe-area-inset-bottom));
+        width:calc(100vw - 24px);
+        max-width:none;
+        display:grid;
+        grid-template-columns:minmax(0,1fr) auto;
+        gap:8px 10px;
+        padding:12px;
+        border:1px solid rgba(255,255,255,.12);
+        border-radius:16px;
+        box-shadow:0 10px 30px rgba(13,47,69,.28);
+        backdrop-filter:blur(16px);
+        font-size:12px;
+      }
+      .pwa-banner p{grid-column:1/-1;line-height:1.45}
+      .pwa-banner button{min-height:38px}
+      .pwa-banner .pwa-primary{grid-column:1;min-width:110px}
+      .pwa-banner .pwa-secondary{grid-column:2;min-width:82px}
+    }
   `;
   document.head.appendChild(style);
 }
@@ -45,6 +65,7 @@ function showBanner(id, message, actions) {
   banner.className = "pwa-banner";
   banner.id = id;
   banner.setAttribute("role", "status");
+  banner.setAttribute("aria-live", "polite");
   const text = document.createElement("p");
   text.textContent = message;
   banner.appendChild(text);
@@ -68,7 +89,7 @@ window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault(); // evitamos el mini-infobar para usar nuestro botón
   deferredPrompt = event;
   if (isStandalone() || sessionStorage.getItem("pwa-install-dismissed")) return;
-  showBanner("pwa-install-banner", "Instala Clima para abrirla como app y usarla sin conexión.", [
+  showBanner("pwa-install-banner", "Instala Clima en tu celular o laptop para abrirla rápido y usarla sin conexión.", [
     {
       label: "Instalar",
       primary: true,
@@ -99,7 +120,7 @@ window.addEventListener("appinstalled", () => {
 /* ---------- iOS: instrucciones manuales ---------- */
 if (isIOS() && !isStandalone() && !localStorage.getItem("pwa-ios-hint-dismissed")) {
   window.addEventListener("load", () => {
-    showBanner("pwa-ios-banner", "Para instalar: toca Compartir y elige “Añadir a pantalla de inicio”.", [
+    showBanner("pwa-ios-banner", "Instálala: toca Compartir y luego “Añadir a pantalla de inicio”.", [
       {
         label: "Entendido",
         primary: true,
