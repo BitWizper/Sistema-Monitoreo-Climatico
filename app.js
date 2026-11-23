@@ -798,7 +798,6 @@ alertForm.addEventListener("submit", async (event) => {
       : alertType.value === "temperature" && fahrenheit
         ? Math.round((threshold - 32) * 5 / 9)
         : threshold,
-    ...(existingRule?.lastTriggeredAt ? { lastTriggeredAt: existingRule.lastTriggeredAt } : {}),
   };
 
   if (activeAlertRules.some((rule) =>
