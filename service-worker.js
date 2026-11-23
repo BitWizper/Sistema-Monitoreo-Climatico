@@ -1,4 +1,4 @@
-const CACHE_NAME = "clima-shell-v2";
+const CACHE_NAME = "clima-shell-v3";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,13 @@ const APP_ASSETS = [
   "./geoService.js",
   "./weatherService.js",
   "./notificationService.js",
+  "./manifest.webmanifest",
+  "./pwa-install.js",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon-maskable-512.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/favicon.svg",
 ];
 
 self.addEventListener("install", (event) => {
